@@ -23,7 +23,7 @@ echo "$(date '+%Y-%m-%d'): Repo initialized." >> daily-log.md
 # 5. Stage everything
 git add .
 
-# 6. Commit with YOUR identity (not M316235)
+# 6. Commit with your personal identity
 git commit -m "Initial sanitized HPC LLM serving reference implementation"
 
 # 7. Create the repo on GitHub (use gh CLI or web UI)
