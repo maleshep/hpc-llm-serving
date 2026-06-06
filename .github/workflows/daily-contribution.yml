@@ -1,0 +1,31 @@
+name: Daily Contribution
+
+on:
+  schedule:
+    # Every day at 11:00 UTC (adjust for your timezone)
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Git identity
+        run: |
+          git config user.name "Aman Khan"
+          git config user.email "aman.khan@hhl.de"
+
+      - name: Update activity log
+        run: |
+          echo "$(date -u '+%Y-%m-%d %H:%M UTC'): Daily sync." >> daily-log.md
+
+      - name: Commit and push
+        run: |
+          git add daily-log.md
+          git diff --cached --quiet || git commit -m "Daily log $(date -u '+%Y-%m-%d')"
+          git push

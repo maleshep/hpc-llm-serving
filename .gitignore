@@ -1,0 +1,38 @@
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+config/local*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Model weights
+checkpoints/
+outputs/
+*.bin
+*.safetensors
+*.gguf
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Keep daily-log visible
+!daily-log.md
