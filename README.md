@@ -1,7 +1,8 @@
 # HPC LLM Serving & Fine-Tuning
 
-> **Production-grade multi-model inference + LoRA fine-tuning on bare-metal Slurm clusters.**  
-> Serving 5+ frontier open-source models across **8× NVIDIA B200 + 4× L40S** with custom speculative decoding, proxy translation layers, and end-to-end training pipelines.
+> **An inference playbook for running frontier open-source LLMs on bare-metal Slurm — getting maximum tokens/sec out of the hardware, and a translation layer that lets Claude Code drive them with zero Anthropic API traffic.**
+>
+> Serving 5+ frontier open-source models across **8× NVIDIA B200 + 4× L40S** with custom speculative decoding, an Anthropic↔OpenAI translation proxy, and end-to-end LoRA fine-tuning pipelines.
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.6-ee4c2c?logo=pytorch)
@@ -15,11 +16,15 @@
 
 ## ⚡ What This Covers
 
-- **Multi-backend serving**: SGLang (pip + Apptainer), vLLM, and native Transformers
-- **Speculative decoding**: EAGLE 3-step MTP, FROZEN_KV_MTP drafters, ngram speculation
-- **Claude Code proxy translation**: Anthropic Messages API ↔ OpenAI Chat Completions for self-hosted models
+This is an **HPC inference playbook** — the practical knowledge for loading open-source LLMs onto a Slurm cluster and extracting maximum throughput from them, plus the glue that makes them drop-in replacements for hosted APIs. The headline chapters:
+
+- **Loading open-source LLMs onto HPC**: model storage on scratch vs project quota, container (Apptainer) vs pip tradeoffs, per-model venvs, TP divisibility rules, `module load cuda/12.9.0`
+- **Multi-backend serving**: SGLang (pip + Apptainer), vLLM, and native Transformers — when to pick which
+- **Extracting maximum inference throughput**: speculative decoding (EAGLE 3-step MTP, FROZEN_KV_MTP drafters, ngram), `mem-fraction-static` tuning, `chunked-prefill-size`, attention-backend selection, TOKENSPEED_MLA, FP8/NVFP4/BF16 KV-cache tradeoffs
+- **Anthropic translation proxy**: Anthropic Messages API ↔ OpenAI Chat Completions, so Claude Code (and `crush`, the Claude-LLM-specific builds) can drive self-hosted models with **zero Anthropic API traffic** — `reasoning_effort` mapping per engine, `max_tokens` caps, 52% tool-schema compression, re-prompt retry loops
+- **Client tooling**: one-command launchers (`claude-glm`, `claude-kimi`, `claude-gm4`, …) that wire SSH tunnel + proxy + Claude Code together; `crush` for Claude-LLM-specific flows
 - **LoRA fine-tuning pipeline**: SFT → GRPO → DPO with model-agnostic reward functions
-- **Operational hardening**: mem-fraction tuning, TP divisibility rules, context safety nets, ghost allocation prevention
+- **Operational hardening**: QoS-by-reload-cost, zero-downtime hot-swap resubmit, ghost-allocation prevention, context safety nets, fairshare management
 
 ---
 
@@ -73,6 +78,8 @@ flowchart TB
 | **Kimi K2.6 NVFP4** | 4× B200 | ~50–70 tok/s | 196K | vLLM pip | ngram speculation, MLA 512-rank KV cache |
 | **Gemma-4-MMM-SFT** | 2× L40S | 23 tok/s | 8K | Native Transformers | Production domain agent, LoRA merged |
 | **Qwen3-235B-A22B** | 4× B200 | ~65 tok/s | 128K | SGLang FP8 | triton MoE backend, TP=4 |
+
+> **Note**: Models with expensive cold-boot times (>10 min, e.g. GLM-5.x DeepGEMM JIT compilation) are kept continuously available via rolling 3-day hot-swap resubmits. See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the zero-downtime procedure.
 
 ---
 
@@ -162,7 +169,15 @@ sbatch --qos=1d --time=1-00:00:00 serving/serve-template-sglang.sh
 claude-glm    # or your custom launcher
 ```
 
-> **Always use `--qos=1d`** (priority 80 vs 20 for 7d). See `docs/DEPLOYMENT_LESSONS.md` for fairshare math.
+> **Pick `--qos` by boot cost, not a blanket value.** QoS (Quality of Service) is Slurm's scheduling priority tier + wall-time ceiling. Higher QoS = faster scheduling at the cost of shorter max runtime.
+>
+> | Boot cost | QoS | `--time` | Examples |
+> |-----------|-----|----------|----------|
+> | > 10 min (expensive JIT, large model load) | `3d` | `3-00:00:00` | GLM-5.x (DeepGEMM ~15 min), MiniMax |
+> | < 5 min (fast boot) | `1d` | `1-00:00:00` | Kimi, Gemma, V4-Pro, Qwen3 |
+> | Training jobs | `7d` | `7-00:00:00` | SFT, GRPO, DPO |
+>
+> Always match `--time=N-00:00:00` to `--qos=Nd`. See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full decision matrix and zero-downtime hot-swap procedure.
 
 ---
 
@@ -174,6 +189,7 @@ claude-glm    # or your custom launcher
 | `docs/PROXY.md` | `reasoning_effort` per engine, `max_tokens` caps, context trimming |
 | `docs/SERVING_TUNING.md` | EAGLE configs, TOKENSPEED_MLA, chunked prefill, mem-fraction |
 | `docs/DEPLOYMENT_LESSONS.md` | Container flags, TP divisibility, OOM fixes, ghost allocation prevention |
+| `docs/OPERATIONS.md` | QoS-by-reload-cost, zero-downtime hot-swap resubmit, graceful shutdown |
 
 ---
 
