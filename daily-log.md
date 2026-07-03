@@ -29,3 +29,4 @@
 2026-07-01 13:35 UTC: Daily sync.
 2026-07-02 12:00 UTC: Added `docs/PROXY.md` — API translation table (reasoning_effort per engine, max_tokens caps) and the context-management pattern for smaller-window backends. Documents Tier-2 summarization (proxy self-calls the backend to compress old context into a preserving summary rather than dropping messages), content-hash caching, in-conversation visibility banner, and fallback semantics. Applies to any backend whose serve-time context is smaller than the client's declared model window (e.g. quantized MoE at 512K vs Sonnet-class 1M assumption).
 2026-07-02 13:00 UTC: Daily sync.
+2026-07-03 12:58 UTC: Daily sync.
