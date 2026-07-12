@@ -190,6 +190,7 @@ claude-glm    # or your custom launcher
 | `docs/SERVING_TUNING.md` | EAGLE configs, TOKENSPEED_MLA, chunked prefill, mem-fraction |
 | `docs/DEPLOYMENT_LESSONS.md` | Container flags, TP divisibility, OOM fixes, ghost allocation prevention |
 | `docs/OPERATIONS.md` | QoS-by-reload-cost, zero-downtime hot-swap resubmit, graceful shutdown |
+| `docs/HPC_INVENTORY.md` | Manifest of what lives on the cluster — serve scripts, containers, venvs, model weights (pointers + sizes, no binaries) |
 
 ---
 
