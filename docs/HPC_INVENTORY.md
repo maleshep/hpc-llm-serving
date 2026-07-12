@@ -255,5 +255,5 @@ state files (pointing at dead nodes) are the most common drift.
 | Containers | 2026-07-12 | Verified — 5 SIFs, ~58 GB total |
 | Model weights | 2026-07-12 | Verified — 13 dirs on scratch, ~4.7 TB total |
 | Venvs | 2026-07-12 | Verified — 7 venvs, ~60 GB total |
-| Fleet monitor | 2026-07-12 | **Not yet deployed** — `fleet-monitor.py` needs rsync to `$LLM_BASE/serving/` + mmm-serve restart |
+| Fleet monitor | 2026-07-12 | **Deployed** — running in mmm-serve job 2474026 (cpu partition). `fleet-monitor.py` + `fleet_panel.py` at `$LLM_BASE/serving/`. Panel verified live in `proxy-ai check`. |
 | State files | 2026-07-12 | Verified — 14 state files (some stale from experiments) |
