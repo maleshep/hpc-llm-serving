@@ -46,6 +46,9 @@ PRIMARY_JOBNAMES = ("glm52-serve", "glm52-noarfusion")
 PRIMARY_JOBNAME = PRIMARY_JOBNAMES[0]  # canonical label for legacy readers
 # jobname of the NVFP4 alt (4x B200, port 8106) — see serve-glm52-nvfp4.sh
 ALT_JOBNAME = "glm52nvfp4"
+# jobname of the REAP-504B (4x B200, port 8109, 1M native ctx) — REAP-pruned + NVFP4.
+# 4th slot, parallel to alt (long-ctx-on-half-hw niche).
+REAP_JOBNAME = "glm52-reap"
 
 # Adaptive cadence (seconds) by primary job wall-left. Tighter as runway shrinks
 # so the operator gets swap-window alerts early enough to act (boot is ~15min).
@@ -134,6 +137,7 @@ def our_fat_jobs():
              f"-o '%i|%j|%N|%T|%L|%q|%b'")
     primaries = []
     alt = None
+    reap = None
     for line in out.strip().splitlines():
         parts = line.split("|")
         if len(parts) < 5:
@@ -163,9 +167,11 @@ def our_fat_jobs():
             primaries.append(rec)
         elif jobname == ALT_JOBNAME:
             alt = rec
+        elif jobname == REAP_JOBNAME:
+            reap = rec
     # Freshest primary first (longest wall_left = newest submission)
     primaries.sort(key=lambda r: r["wall_left"] or 0, reverse=True)
-    return primaries, alt
+    return primaries, alt, reap
 
 
 def free_fat_nodes():
@@ -280,6 +286,7 @@ def main():
         "current": None,      # freshest primary job snapshot or null
         "old": [],            # legacy primary jobs kept alive across a hot-swap
         "alt": None,          # NVFP4 alt snapshot or null
+        "reap": None,         # REAP-504B snapshot or null (4th slot, 1M native ctx)
         "free_nodes": [],
         "budget": {},
         "pending": [],        # our PENDING jobs (jobid, jobname, qos, reason)
@@ -292,7 +299,7 @@ def main():
 
     while True:
         try:
-            primaries, alt = our_fat_jobs()
+            primaries, alt, reap = our_fat_jobs()
             # current = freshest primary (longest wall_left); old = the rest
             primary = primaries[0] if primaries else None
             old_list = primaries[1:] if len(primaries) > 1 else []
@@ -303,6 +310,7 @@ def main():
             state["current"] = primary
             state["old"] = old_list
             state["alt"] = alt
+            state["reap"] = reap
             state["free_nodes"] = nodes
             state["budget"] = budget
             state["pending"] = pending

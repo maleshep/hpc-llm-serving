@@ -45,7 +45,7 @@ EVENTS = f"{LLM_BASE}/.fleet/events.log"
 SSH = "ssh user@hpc-login.example.com"
 
 # (label, local_tunnel_port, local_proxy_port) — must match fleet_panel.TUNNELS
-LOCAL_PORTS = [(8103, 5007), (8113, 5033), (8106, 5027), (8110, 5015), (8109, None), (8104, 5008)]
+LOCAL_PORTS = [(8103, 5007), (8113, 5033), (8106, 5027), (8109, 5017), (8110, 5015), (8104, 5008)]
 
 # Per-model proxy restart config (mirrors proxy-ai.cmd do_glm/do_glm_alt/do_minimax/do_kimi).
 # tunnel_port -> proxy env: (proxy_port, model, ctx, extra_env)
@@ -58,6 +58,10 @@ PROXY_CONFIG = {
     8113: dict(proxy_port=5033, model="glm-5.2", ctx=1048576, extra={}),
     8106: dict(proxy_port=5027, model="glm-5.2-nvfp4", ctx=524288,
                extra={"SUMMARIZE_ENABLED": "1", "SESSION_MEMORY_ENABLED": "0"}),
+    # GLM REAP-504B: REAP-pruned + NVFP4, NATIVE 1M ctx (KV holds 1.45M tokens).
+    # NO SUMMARIZE — it doesn't need the 512K hack the full-754B alt needs.
+    # Loop-rate guardrail (min_p=0.05+rep_pen=1.10) injected at proxy server.py.
+    8109: dict(proxy_port=5017, model="glm-5.2-reap", ctx=1048576, extra={}),
     # Inkling NVFP4 (4× B200): SUMMARIZE_ENABLED=1 + SESSION_MEMORY disabled,
     # mirrors proxy-ai.cmd :do_ink / :fleet config (port 8110/5015, 1M ctx).
     8110: dict(proxy_port=5015, model="inkling-nvfp4", ctx=1048576,
@@ -89,6 +93,8 @@ LOGGER_CONFIG = {
     # GLM-old alias: logger writes to hpc-old.jsonl (kept separate for A/B).
     8113: dict(logger_port=5031, upstream=5033, route="hpc-old", usage_log="hpc-old.jsonl"),
     8106: dict(logger_port=5023, upstream=5027, route="hpc-alt", usage_log="hpc-alt.jsonl"),
+    # REAP: fresh logger port 5029, route hpc-reap, separate JSONL for A/B.
+    8109: dict(logger_port=5029, upstream=5017, route="hpc-reap", usage_log="hpc-reap.jsonl"),
     8110: dict(logger_port=5025, upstream=5015, route="hpc-ink", usage_log="hpc-ink.jsonl"),
 }
 LOGGER_DIR = os.path.expanduser("~/repo/claude-code-proxy/llm-usage-logger")

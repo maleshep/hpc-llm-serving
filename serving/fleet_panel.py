@@ -53,6 +53,11 @@ TUNNELS = [
     #                  (used for aliases like GLM-old, pinned to a specific job)
     ("GLM-5.2 FP8",   ".serve-state-glm.json",        8103, ("glm52-serve", "glm52-noarfusion"), 8103, 5007, 5021),
     ("GLM-alt NVFP4", ".serve-state-glm-nvfp4.json",  8106, "glm52nvfp4",  8106, 5027, 5023),
+    # GLM REAP-504B: 0xSero/GLM-5.2-504B (REAP-pruned 168/256 experts + NVFP4).
+    # 4x B200, 3d QoS, port 8109, NATIVE 1M context (KV cache holds 1.45M tokens).
+    # Distinct from the alt (full 754B NVFP4, 512K): REAP is the long-ctx-on-half-hw
+    # niche. 70.5% TB — NOT a coding-model replacement.
+    ("GLM REAP-504B", ".serve-state-glm52-reap.json", 8109, "glm52-reap",  8109, 5017, 5029),
     # GLM-old alias: pinned to whatever job the state file names (usually a
     # pre-swap primary kept alive until wall expiry). jobname=None so we don't
     # collide with the primary GLM row on the diagnostic jobname variant. When
@@ -261,6 +266,7 @@ JOBNAME_TAGS = {
     "glm52-noarfusion": "GLM-old",
     "glm52nvfp4":       "NVFP4",
     "glm52reap":        "REAP",
+    "glm52-reap":       "REAP",
     "glm52nvfp4-700k":  "700K",
     "glm52nvfp4wm":     "WARM",
     "inkling-serve":    "INK",
@@ -514,6 +520,7 @@ def render_fleet(s):
     dm = s.get("daemon") or {}
     c = s.get("current") or {}
     a = s.get("alt") or {}
+    r = s.get("reap") or {}
     old = s.get("old") or []
     bg = s.get("budget") or {}
 
@@ -552,6 +559,15 @@ def render_fleet(s):
         wl = a.get("wall_left_h")
         wl_str = f"{wl}h left" if wl is not None else ""
         rows.append(f"{ANSI_CYAN}●{ANSI_RESET} alt        {a.get('jobid')}  {a.get('node')}  {wl_str}")
+
+    # REAP-504B: the 4th slot — REAP-pruned NVFP4, 1M native ctx, long-ctx niche.
+    # Parallel to alt, NOT a replacement (standalone until proven). 3d QoS.
+    if r.get("jobid"):
+        wl = r.get("wall_left_h")
+        wl_str = f"{wl}h left" if wl is not None else ""
+        rows.append(f"{ANSI_CYAN}●{ANSI_RESET} reap       {r.get('jobid')}  {r.get('node')}  {r.get('state','?')}  {wl_str}")
+    else:
+        rows.append(f"{ANSI_DIM}○ reap       — not deployed{ANSI_RESET}")
 
     used, free_n, cap = bg.get("used", 0), bg.get("free", 0), bg.get("cap", 16)
     if free_n == 0:
