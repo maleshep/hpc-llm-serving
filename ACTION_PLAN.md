@@ -106,7 +106,7 @@ Do this every evening until the Action takes over.
 ### 8. OPTIONAL — COPY REAL CODE INTO SANITIZED REPO
 
 You can now safely copy generic scripts from `llm-training` into `hpc-llm-serving`:
-- Reward functions from `train_gemma4_grpo.py` (remove Merck data references)
+- Reward functions from `train_gemma4_grpo.py` (remove <employer> data references)
 - Proxy config patterns from `docs/ops/proxy.md` (remove internal hostnames)
 - Eval harness from `eval/run_eval_gemma4.py` (remove internal paths)
 

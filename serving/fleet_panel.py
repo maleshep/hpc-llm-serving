@@ -16,9 +16,6 @@ Features:
   - Terminal bell on new ALERT
 
 Observer data only — this never triggers anything. Operator uses /hot-swap.
-
-NOTE: Sanitized reference copy. Replace <account>, login host, jobnames, and
-node-name parsing with your cluster's conventions before running.
 """
 import json
 import os
@@ -52,25 +49,47 @@ TUNNELS = [
     #   - None      -> pure state-file mode: node+jobid come from state_file only
     #                  (used for aliases like GLM-old, pinned to a specific job)
     ("GLM-5.2 FP8",   ".serve-state-glm.json",        8103, ("glm52-serve", "glm52-noarfusion"), 8103, 5007, 5021),
-    ("GLM-alt NVFP4", ".serve-state-glm-nvfp4.json",  8106, "glm52nvfp4",  8106, 5027, 5023),
+    # GLM-5.2-Vision FP8: baseten graft — same 754B FP8 text weights as the primary
+    # + MoonViT vision tower (K2.5/K2.6-era) + trained 49.5M PatchMerger projector.
+    # 8x B200, 7d QoS, port 8116, native 1M ctx. Requires sglang_glm5v plugin +
+    # sglang_glm5v.patch monkey-patch inside the container to register the
+    # Glm5vForConditionalGeneration arch on SGLang's DSA gate. Local proxy 5037,
+    # logger 5039, launcher claude-glm-vis. This is the drop-in-with-eyes candidate
+    # for our main coding model — text-only turns should match primary (~220 tok/s
+    # with EAGLE-5 ported over), image turns add ~50-100ms one-shot prefill.
+    ("GLM-Vision FP8", ".serve-state-glm-vision.json", 8116, "glm52v-serve", 8116, 5037, 5039),
+    # VibeVoice-ASR-9B (microsoft/VibeVoice-ASR): long-form transcription engine.
+    # 1x L40S, gpu partition, port 8300, QoS=1d. vLLM v0.14.1 container + plugin.
+    # OpenAI chat-style /v1/chat/completions (NOT /v1/audio/transcriptions).
+    # 60+ min single-pass, joint ASR+diarization+timestamps, 50+ langs.
+    # STANDALONE — no proxy/logger (not a claude-* model); dashboard visibility only.
+    # local_proxy_port=None, local_logger_port=None so the local-stack column shows "..".
+    ("VibeVoice-ASR", ".serve-state-vibevoice.json", 8300, "vibevoice-asr", 8300, None, None),
     # GLM REAP-504B: 0xSero/GLM-5.2-504B (REAP-pruned 168/256 experts + NVFP4).
     # 4x B200, 3d QoS, port 8109, NATIVE 1M context (KV cache holds 1.45M tokens).
-    # Distinct from the alt (full 754B NVFP4, 512K): REAP is the long-ctx-on-half-hw
-    # niche. 70.5% TB — NOT a coding-model replacement.
+    # The long-ctx-on-half-hw niche. 70.5% TB — NOT a coding-model replacement.
+    # Fresh local ports (proxy 5017, logger 5029). Replaced the NVFP4-alt (full 754B,
+    # 512K) which was killed 2026-07-18 — REAP inherits the 4-GPU slot.
     ("GLM REAP-504B", ".serve-state-glm52-reap.json", 8109, "glm52-reap",  8109, 5017, 5029),
     # GLM-old alias: pinned to whatever job the state file names (usually a
     # pre-swap primary kept alive until wall expiry). jobname=None so we don't
-    # collide with the primary GLM row on the diagnostic jobname variant. When
-    # the state file's job is dead, the health probe fails -> healer stays quiet,
-    # no error spam. To retire this row, just delete the state file.
+    # collide with the primary GLM row on 'glm52-noarfusion'. When the state
+    # file's job is dead, the health probe fails -> healer stays quiet, no
+    # error spam. To retire this row, just delete the state file.
     ("GLM-5.2 old",   ".serve-state-glm-old.json",    8103, None,          8113, 5033, 5031),
-    ("Inkling NVFP4", ".serve-state-ink.json",        8110, "inkling-serve", 8110, 5015, 5025),
-    # Kimi: two serve variants share ONE port 8104 + ONE state file
-    # + ONE served-model-name (kimi-k2.7). ONE AT A TIME. K2.7-Code is primary
-    # (always-thinks, vision via MoonViT via --mm-encoder-tp-mode data); K2.6
-    # (serve-kimi-k2.sh) is the fallback that CAN suppress thinking.
-    # No usage logger for Kimi (user requested minimal background procs).
-    ("Kimi K2.7",     ".serve-state-kimi.json",       8104, ("kimi-k27-serve", "kimi-k2-serve"), 8104, 5008, None),
+    # Kimi K3 SERVING (api_server via RAY): TP=4+PP=3 (3 nodes x 4 B200) PROVEN
+    # 2026-07-30 job 2864817: 65.9 tok/s text + vision (MoonViT, base64 data URI).
+    # ray 2.48.0 (py3.12, bind-mounted), per-node /tmp/ray-k3 tmpdir, allreduce
+    # fusion OFF (VLLM_ALLREDUCE_USE_FLASHINFER=0). Port 8102, served-model-name
+    # kimi-k3, --tool-call-parser kimi_k3. Health probe to :8102/v1/models.
+    # claude-k3 tunnels here. TP=8+PP=2 swap = one env change (needs 2 free fat nodes).
+    ("Kimi K3",       ".serve-state-kimi3-ray.json",  8102, "kimi-k3-serve", 8102, None, None),
+    # DeepSeek V4-Flash-0731 (2026-08-04) — replaces old V4-Flash in place.
+    # 304B MoE, ~8B active, native 1M ctx, EAGLE 3-token speculation (DFLASH/DSpark
+    # not yet supported in our SGLang container for DeepSeekV4 arch).
+    # 4x B200, 7d QoS, port 8100. Beats V4-Pro on every coding benchmark.
+    # Proxy port 5010, logger port 5011, launcher claude-ds.
+    ("V4-Flash-0731", ".serve-state.json",            8100, "v4flash-container", 8100, 5010, 5011),
 ]
 
 # Local-stack health passed in from proxy-ai.cmd (runs on the laptop, can reach
@@ -178,9 +197,10 @@ def resolve_job(jobname):
     The state file can be clobbered/stale, so squeue is the source of truth
     for which job is actually running and on which node.
 
-    jobname may be a single string OR a tuple/list of alternatives (e.g. two
-    serve variants share one TUNNELS row but have distinct jobnames; only one
-    runs at a time). First RUNNING match wins."""
+    jobname may be a single string OR a tuple/list of alternatives (e.g. the
+    MiniMax NVFP4 + MXFP8 variants share one TUNNELS row but have distinct
+    jobnames — minimax-m3-nvfp4 / minimax-m3-serve; only one runs at a time).
+    First RUNNING match wins."""
     names = jobname if isinstance(jobname, (tuple, list)) else [jobname]
     out = sh(f"squeue -u $USER -h -o '%i|%j|%N|%T' 2>/dev/null")
     for line in out.strip().splitlines():
@@ -263,13 +283,16 @@ def wall_left_for_job(jobid, use_cache=True):
 # Map our known jobnames to a short label for the node-grid legend.
 JOBNAME_TAGS = {
     "glm52-serve":      "GLM",
+    "glm52v-serve":     "GLVIS",
+    "vibevoice-asr":    "ASR",
+
     "glm52-noarfusion": "GLM-old",
     "glm52nvfp4":       "NVFP4",
     "glm52reap":        "REAP",
-    "glm52-reap":       "REAP",
     "glm52nvfp4-700k":  "700K",
     "glm52nvfp4wm":     "WARM",
     "inkling-serve":    "INK",
+    "glm52-reap":       "REAP",
     "minimax-m3":       "MM3",
     "minimax-m3-nvfp4": "MM3-N",
     "minimax-m3-serve": "MM3-X",
@@ -277,8 +300,50 @@ JOBNAME_TAGS = {
     "v4pro":            "V4P",
     "kimi-k27-serve":   "K2.7",
     "kimi-k2-serve":    "K2.6",
+    "kimi-k3-mn":        "K3",
+    "k3-smoke":          "K3-S",
+    "k3-tp8pp2":         "K3-8",
+    "k3-tp4pp3-v":       "K3-4",
+    "kimi-k3-serve":     "K3",
+    "k3-ngram":          "K3-N",
     "qwen235b":         "QWN",
 }
+
+# Launcher command per model — surfaced as a dim hint on the TUNNELS row so the
+# user knows which claude-* / client to run. None = standalone (no claude-* launcher).
+LAUNCHERS = {
+    8103: "claude-glm",
+    8116: "claude-glm-vis",
+    8109: "claude-reap",
+    8113: "claude-glm-old",
+    8104: "claude-kimi",
+    8102: "claude-k3",
+    8300: None,  # VibeVoice-ASR: standalone /v1/chat/completions, no claude-* launcher
+}
+
+
+def _expand_nodelist(spec):
+    """Expand a Slurm nodelist spec into individual hostnames.
+    Handles 'fat-node[003,005]', 'fat-node[003-005]', 'fat-node-003', comma lists.
+    Uses scontrol show hostnames when available (robust); falls back to a regex."""
+    spec = spec.strip()
+    if not spec:
+        return []
+    # Single node (no bracket) — return as-is.
+    if "[" not in spec:
+        return [n for n in spec.split(",") if n]
+    # Bracketed form — let scontrol expand it (handles ranges + commas).
+    out = sh(f"scontrol show hostnames '{spec}' 2>/dev/null")
+    nodes = [n for n in out.split() if n]
+    if nodes:
+        return nodes
+    # Fallback: best-effort regex (comma list inside brackets, no ranges).
+    import re as _re
+    m = _re.match(r"^(\S+)\[(.+)\]$", spec)
+    if m:
+        prefix, inside = m.group(1), m.group(2)
+        return [prefix + x for x in inside.split(",") if x]
+    return [spec]
 
 
 def our_jobs_by_node(use_cache=True):
@@ -306,7 +371,12 @@ def our_jobs_by_node(use_cache=True):
             gpus = int(m.group(1))
         if gpus == 0:
             continue  # cpu-only job (e.g. mmm-serve) — no bar contribution
-        by_node.setdefault(node.strip(), []).append({"jobname": jobname, "gpus": gpus})
+        # Expand bracketed nodelists (e.g. "fat-node[003,005]") into individual
+        # nodes so the grid marks EACH node as ours. %b GRES is per-node, so each
+        # expanded node gets the full gpu count. Without this, multi-node jobs
+        # (k3-tp8pp2 on fat003+fat005) show as "other" (red) instead of "ours".
+        for n in _expand_nodelist(node):
+            by_node.setdefault(n, []).append({"jobname": jobname, "gpus": gpus})
     _OUR_JOBS_CACHE["data"] = by_node
     _OUR_JOBS_CACHE["t"] = now
     return by_node
@@ -420,7 +490,10 @@ def render_tunnels(s):
         lp_dot, _ = _local_dot(lp_port, lh)
         ll_dot, _ = _local_dot(ll_port, lh) if ll_port else (ANSI_DIM + "." + ANSI_RESET, "n/a")
         local_str = f"{lt_dot}{lp_dot}{ll_dot}"
-        rows.append(f"{dot_c} {label:<16} :{lt_port} {word:<8} {local_str}  {right}")
+        # Launcher hint (dim) — which claude-* / client to run for this model.
+        launcher = LAUNCHERS.get(lt_port)
+        launch_s = f"{ANSI_DIM} {launcher}{ANSI_RESET}" if launcher else ""
+        rows.append(f"{dot_c} {label:<16} :{lt_port} {word:<8} {local_str}  {right}{launch_s}")
     rows.append(ANSI_DIM + "  HPC / local: tunnel+proxy+logger  (●up ◐busy ○dn ?unknown)" + ANSI_RESET)
     return box("TUNNELS", rows)
 
@@ -520,8 +593,8 @@ def render_fleet(s):
     dm = s.get("daemon") or {}
     c = s.get("current") or {}
     a = s.get("alt") or {}
-    r = s.get("reap") or {}
     old = s.get("old") or []
+    r = s.get("reap") or {}
     bg = s.get("budget") or {}
 
     rows = []
@@ -560,14 +633,25 @@ def render_fleet(s):
         wl_str = f"{wl}h left" if wl is not None else ""
         rows.append(f"{ANSI_CYAN}●{ANSI_RESET} alt        {a.get('jobid')}  {a.get('node')}  {wl_str}")
 
-    # REAP-504B: the 4th slot — REAP-pruned NVFP4, 1M native ctx, long-ctx niche.
-    # Parallel to alt, NOT a replacement (standalone until proven). 3d QoS.
+    # REAP-504B: the 4th slot — REAP-pruned NVFP4, 1M native ctx, long-ctx-on-half-hw
+    # niche. Parallel to alt, NOT a replacement (standalone until proven). 3d QoS.
+    r = s.get("reap") or {}
     if r.get("jobid"):
         wl = r.get("wall_left_h")
         wl_str = f"{wl}h left" if wl is not None else ""
         rows.append(f"{ANSI_CYAN}●{ANSI_RESET} reap       {r.get('jobid')}  {r.get('node')}  {r.get('state','?')}  {wl_str}")
     else:
         rows.append(f"{ANSI_DIM}○ reap       — not deployed{ANSI_RESET}")
+
+    # V4-Flash-0731: the 5th slot — DeepSeek V4-Flash-0731, 4x B200, 1M native ctx,
+    # EAGLE 3-token speculation. Beats V4-Pro on coding benchmarks. 7d QoS.
+    v = s.get("v4flash") or {}
+    if v.get("jobid"):
+        wl = v.get("wall_left_h")
+        wl_str = f"{wl}h left" if wl is not None else ""
+        rows.append(f"{ANSI_CYAN}●{ANSI_RESET} v4flash    {v.get('jobid')}  {v.get('node')}  {v.get('state','?')}  {wl_str}")
+    else:
+        rows.append(f"{ANSI_DIM}○ v4flash    — not deployed{ANSI_RESET}")
 
     used, free_n, cap = bg.get("used", 0), bg.get("free", 0), bg.get("cap", 16)
     if free_n == 0:
@@ -710,9 +794,8 @@ def render_loop(state_path, events_path, interval):
                 sys.stdout.flush()
             last_alert = new_alert
             # Prime the wall-left cache by probing tunnel jobs once per cycle.
-            for row in TUNNELS:
-                label, sf, hpc_port, jobname, lt_port, lp_port = row[:6]
-                _, _, jobid, _ = tunnel_status(sf, hpc_port, jobname)
+            for label, sf, port, jobname, lt_port, lp_port in TUNNELS:
+                _, _, jobid, _ = tunnel_status(sf, port, jobname)
                 wall_left_for_job(jobid, use_cache=False)
             # Prime the our-jobs-by-node cache (used by the node grid to mark
             # which of our jobs are on each node). One squeue call per cycle.

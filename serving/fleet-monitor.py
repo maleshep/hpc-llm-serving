@@ -14,9 +14,6 @@ running 7 days straight regardless of whether `proxy-ai watch` is open.
 Optional env:
   NTFY_TOPIC   if set, pushes ALERT lines to ntfy.sh/<topic> (phone). Off if empty.
   POLL_OVERRIDE if set, fixes cadence to this many seconds (disables adaptive).
-
-NOTE: This is a sanitized reference copy. Replace <account>, the login host, and
-the jobname constants with your cluster's values before running.
 """
 import json
 import os
@@ -33,22 +30,28 @@ EVENTS_FILE = os.path.join(STATE_DIR, "events.log")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 POLL_OVERRIDE = os.environ.get("POLL_OVERRIDE", "").strip()
 
-ACCOUNT = os.environ.get("USER", "your-user")
+ACCOUNT = os.environ.get("USER", "user")
 FAT_PARTITION = "fat"
 B200_PER_FAT_NODE = 8
 QOS_7D_CAP_B200 = 16  # cluster-wide GrpTRES gres/gpu:b200 cap on the 7d QoS
 
-# jobname(s) of the primary GLM-5.2 FP8 job (8x B200, port 8103) — see serve-glm52-sglang-latest.sh
+# jobname(s) of our primary GLM-5.2 FP8 job (8x B200, port 8103) — see serve-glm52-sglang-latest.sh
 # Tuple: any of these names is treated as "primary". Diagnostic variants (e.g.
-# a workaround-named job submitted to dodge an SGLang boot wedge) also count as
-# primary so the panel/monitor don't flag a false GAP.
+# glm52-noarfusion, submitted 2026-07-13 as workaround for SGLang #29073 wedge)
+# also count as primary so the panel/monitor don't flag a false GAP.
 PRIMARY_JOBNAMES = ("glm52-serve", "glm52-noarfusion")
 PRIMARY_JOBNAME = PRIMARY_JOBNAMES[0]  # canonical label for legacy readers
-# jobname of the NVFP4 alt (4x B200, port 8106) — see serve-glm52-nvfp4.sh
+# jobname of the NVFP4 alt (4x B200, port 8106) — KILLED 2026-07-18, replaced by REAP.
+# Kept defined so a future alt revival auto-tracks; until then state["alt"] stays null.
 ALT_JOBNAME = "glm52nvfp4"
-# jobname of the REAP-504B (4x B200, port 8109, 1M native ctx) — REAP-pruned + NVFP4.
-# 4th slot, parallel to alt (long-ctx-on-half-hw niche).
+# jobname of the REAP-504B (4x B200, port 8109, 1M native ctx) — see serve-glm52-reap.sh
+# REAP-pruned 168/256 experts + NVFP4. Standalone 4th slot, parallel to alt.
 REAP_JOBNAME = "glm52-reap"
+# jobname of the DeepSeek V4-Flash-0731 (4x B200, port 8100, 1M native ctx) — see
+# serve-v4flash-container.sh. 304B MoE-A8B, EAGLE 3-token speculation, MXFP4 runtime
+# MoE quant. Added 2026-08-04 when V4-Flash-0731 replaced old V4-Flash in place.
+# Standalone 5th slot, parallel to primary/alt/reap.
+V4FLASH_JOBNAME = "v4flash-container"
 
 # Adaptive cadence (seconds) by primary job wall-left. Tighter as runway shrinks
 # so the operator gets swap-window alerts early enough to act (boot is ~15min).
@@ -127,7 +130,7 @@ def pending_jobs():
 
 
 def our_fat_jobs():
-    """Our GLM jobs on the fat partition. Returns (primaries: list, alt: dict|None).
+    """Our GLM/V4-Flash jobs on the fat partition. Returns (primaries: list, alt: dict|None, reap: dict|None, v4flash: dict|None).
 
     Primaries is a list because we can have multiple simultaneously during a
     hot-swap window (new job on fresh node coexists with old job until wall
@@ -138,6 +141,7 @@ def our_fat_jobs():
     primaries = []
     alt = None
     reap = None
+    v4flash = None
     for line in out.strip().splitlines():
         parts = line.split("|")
         if len(parts) < 5:
@@ -169,9 +173,11 @@ def our_fat_jobs():
             alt = rec
         elif jobname == REAP_JOBNAME:
             reap = rec
+        elif jobname == V4FLASH_JOBNAME:
+            v4flash = rec
     # Freshest primary first (longest wall_left = newest submission)
     primaries.sort(key=lambda r: r["wall_left"] or 0, reverse=True)
-    return primaries, alt, reap
+    return primaries, alt, reap, v4flash
 
 
 def free_fat_nodes():
@@ -287,6 +293,7 @@ def main():
         "old": [],            # legacy primary jobs kept alive across a hot-swap
         "alt": None,          # NVFP4 alt snapshot or null
         "reap": None,         # REAP-504B snapshot or null (4th slot, 1M native ctx)
+        "v4flash": None,      # V4-Flash-0731 snapshot or null (5th slot, 4x B200)
         "free_nodes": [],
         "budget": {},
         "pending": [],        # our PENDING jobs (jobid, jobname, qos, reason)
@@ -299,7 +306,7 @@ def main():
 
     while True:
         try:
-            primaries, alt, reap = our_fat_jobs()
+            primaries, alt, reap, v4flash = our_fat_jobs()
             # current = freshest primary (longest wall_left); old = the rest
             primary = primaries[0] if primaries else None
             old_list = primaries[1:] if len(primaries) > 1 else []
@@ -311,6 +318,7 @@ def main():
             state["old"] = old_list
             state["alt"] = alt
             state["reap"] = reap
+            state["v4flash"] = v4flash
             state["free_nodes"] = nodes
             state["budget"] = budget
             state["pending"] = pending

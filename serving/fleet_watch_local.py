@@ -18,9 +18,6 @@ Usage (from proxy-ai.cmd :watch):
   python fleet_watch_local.py [SECS]   # default 5s refresh
 
 Keys: r = refresh now, q = quit. Ctrl+C also quits.
-
-NOTE: Sanitized reference copy. Replace <account>, the SSH target, and the
-PROXY_DIR/LOGGER_DIR paths with your own before running.
 """
 import json
 import os
@@ -42,49 +39,108 @@ import fleet_panel as fp  # noqa
 LLM_BASE = "/shared/project/<account>/llm"
 STATE = f"{LLM_BASE}/.fleet/state.json"
 EVENTS = f"{LLM_BASE}/.fleet/events.log"
-SSH = "ssh user@hpc-login.example.com"
+SSH = "ssh user@hpc-cluster.example.com"
 
 # (label, local_tunnel_port, local_proxy_port) — must match fleet_panel.TUNNELS
-LOCAL_PORTS = [(8103, 5007), (8113, 5033), (8106, 5027), (8109, 5017), (8110, 5015), (8104, 5008)]
+# NVFP4-alt (8106/5027) removed 2026-07-18 — killed, replaced by REAP.
+# GLM-Vision FP8 (8116/5037) added 2026-07-30 — drop-in vision sidecar for main.
+# Kimi K3 (8102/5019) added 2026-07-30 — was missing, causing healer to see
+# local_health[8102]="down" every cycle (default) and reopen the tunnel every
+# 5 min → 10+ zombie ssh procs accumulating. Adding the pair makes
+# probe_local_ports() populate 8102's real state so the healer only reopens
+# when it's actually down.
+LOCAL_PORTS = [(8103, 5007), (8113, 5033), (8109, 5017), (8110, 5015), (8104, 5008), (8116, 5037), (8102, 5019), (8100, 5010), (8300, 0)]
+# VibeVoice-ASR (8300/0): standalone transcription endpoint, NO proxy/logger.
+# proxy_port=0 marks it state-file-only — watcher tracks tunnel health + wall-left
+# but never spawns a proxy or logger for it.
 
 # Per-model proxy restart config (mirrors proxy-ai.cmd do_glm/do_glm_alt/do_minimax/do_kimi).
 # tunnel_port -> proxy env: (proxy_port, model, ctx, extra_env)
 # extra_env is a dict of env vars to set on the proxy process.
+#
+# NOTE 2026-08-04: every entry now carries "profile" (-> PROFILE env, selects
+# the row in claude-code-proxy/server.py's PROFILES dict) and "route" (->
+# ROUTE_NAME env, keeps each model's usage jsonl separate). Before this,
+# restart_proxy() never set PROFILE/BACKEND_URL/BACKEND_MODEL at all (it set
+# OPENAI_BASE_URL/BIG_MODEL/SMALL_MODEL, none of which server.py reads), so
+# EVERY proxy silently ran as PROFILE_NAME's default ("glm52") pointed at
+# BACKEND_URL's default (localhost:8103) regardless of which model was
+# requested. Root-caused via the glm-vision httpx.ConnectError investigation.
 PROXY_CONFIG = {
-    8103: dict(proxy_port=5007, model="glm-5.2", ctx=1000000, extra={}),
+    8103: dict(proxy_port=5007, model="glm-5.2", ctx=1000000, extra={},
+               profile="glm52", route="hpc"),
     # GLM-old alias: same model + ctx as the primary GLM (points at a legacy
     # job kept alive across a hot-swap). No SUMMARIZE_ENABLED; the ONLY
-    # summarizing GLM row is :5027 (glm-alt).
-    8113: dict(proxy_port=5033, model="glm-5.2", ctx=1048576, extra={}),
-    8106: dict(proxy_port=5027, model="glm-5.2-nvfp4", ctx=524288,
-               extra={"SUMMARIZE_ENABLED": "1", "SESSION_MEMORY_ENABLED": "0"}),
-    # GLM REAP-504B: REAP-pruned + NVFP4, NATIVE 1M ctx (KV holds 1.45M tokens).
-    # NO SUMMARIZE — it doesn't need the 512K hack the full-754B alt needs.
+    # summarizing GLM row is :5027 (glm-alt). See ~/.claude memory
+    # feedback_proxy_summarization_glm_alt.
+    8113: dict(proxy_port=5033, model="glm-5.2", ctx=1048576, extra={},
+               profile="glm52", route="hpc-old"),
+    # GLM REAP-504B: 0xSero/GLM-5.2-504B, REAP-pruned + NVFP4, NATIVE 1M ctx
+    # (KV holds 1.45M tokens). NO SUMMARIZE — it doesn't need the 512K hack the
+    # dead NVFP4-alt needed. Fresh ports 5017/5029.
     # Loop-rate guardrail (min_p=0.05+rep_pen=1.10) injected at proxy server.py.
-    8109: dict(proxy_port=5017, model="glm-5.2-reap", ctx=1048576, extra={}),
+    8109: dict(proxy_port=5017, model="glm-5.2-reap", ctx=1048576, extra={},
+               profile="glmreap", route="hpc-reap"),
     # Inkling NVFP4 (4× B200): SUMMARIZE_ENABLED=1 + SESSION_MEMORY disabled,
     # mirrors proxy-ai.cmd :do_ink / :fleet config (port 8110/5015, 1M ctx).
     8110: dict(proxy_port=5015, model="inkling-nvfp4", ctx=1048576,
-               extra={"SUMMARIZE_ENABLED": "1", "SESSION_MEMORY_ENABLED": "0"}),
+               extra={"SUMMARIZE_ENABLED": "1", "SESSION_MEMORY_ENABLED": "0"},
+               profile="inkling", route="hpc-ink"),
     # Kimi K2.7-Code: always-thinks (proxy sends reasoning_effort=high always).
     # SUMMARIZE_ENABLED=1: 185K ctx is the tightest in the fleet — tool-heavy
     # convos overflow fast without summarization. THINKING_MODE=native (renders
     # reasoning as a native Anthropic thinking block via reasoning_content
     # extractor; text mode leaked thinking as inline "💭 Internal Reasoning"
-    # text).
+    # text — fixed 2026-07-13).
     8104: dict(proxy_port=5008, model="kimi-k2.7", ctx=185000,
-               extra={"THINKING_MODE": "native", "SUMMARIZE_ENABLED": "1"}),
-    # 8109 (REAP) has no proxy yet
+               extra={"THINKING_MODE": "native", "SUMMARIZE_ENABLED": "1"},
+               profile="kimi27", route="hpc-kimi"),
+    # GLM-5.2-Vision FP8 (baseten graft, 8x B200): text-only turns match primary,
+    # image turns add ~50-100ms one-shot prefill. Native 1M ctx. No SUMMARIZE —
+    # 1M is comfortable. Model name sent to HPC = glm-5.2-vision.
+    # VISION_CAPABLE=true — the proxy's builtin vision-tag list (server.py:126)
+    # doesn't include "glm" (primary GLM is text-only), so we override to enable
+    # Anthropic image-block -> OpenAI image_url conversion. Without this, image
+    # blocks get flattened to "[Image content]" placeholder and vision is dead.
+    8116: dict(proxy_port=5037, model="glm-5.2-vision", ctx=1048576,
+               extra={"VISION_CAPABLE": "true"},
+               profile="glmvision", route="hpc-vision"),
+    # Kimi K3 (2.8T MoE, MXFP4, TP=4+PP=3 ray, 1M native ctx, multimodal via
+    # MoonViT). Always-thinking, suppressible via reasoning_effort=low. Proxy at
+    # :5019 preserves the FULL assistant message (incl. reasoning_content) into
+    # messages[] for multi-turn + tool calls per claude-k3.cmd.
+    8102: dict(proxy_port=5019, model="kimi-k3", ctx=1048576, extra={"THINKING_MODE": "native"},
+               profile="kimik3", route="hpc-k3"),
+    # DeepSeek V4-Flash-0731 (2026-07-31) — replaces old V4-Flash in place
+    # 2026-08-04. 304B MoE, ~8B active, native 1M ctx, DSpark 7-token
+    # speculation bundled in checkpoint (no separate drafter). SGLang recipe:
+    # flashinfer_mxfp4 runtime MoE quant + FP8 KV + mem-fraction 0.85.
+    # Beats V4-Pro on every coding benchmark (Terminal-Bench 82.7 vs 72.1).
+    # Proxy port 5010, logger port 5011 (fresh — old V4-Flash used 5005 via STATEFILE_MODELS).
+    8100: dict(proxy_port=5010, model="deepseek-v4-flash-0731", ctx=1048576, extra={},
+               profile="v4flash0731", route="hpc-v4f"),
 }
 PROXY_DIR = os.path.expanduser("~/repo/claude-code-proxy")
 LOG_DIR = os.path.expanduser("~/.proxy-ai/logs")
+
+# Resolved to a full path, never bare "uv" on PATH: the spawned cmd/proxy tree
+# inherits whatever PATH the CALLING shell had at ITS startup, which on a
+# freshly re-imaged machine (or any shell opened before a PATH edit lands)
+# won't include Scripts\uv.exe yet even though the registry User PATH is
+# correct — the failure is silent (proxy never binds, .cmd reports "ready"
+# regardless since restart_proxy is fire-and-forget). Discovered 2026-08-04.
+_UV_CANDIDATES = [
+    os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312\Scripts\uv.exe"),
+    os.path.expanduser(r"~\.cargo\bin\uv.exe"),
+]
+UV_EXE = next((p for p in _UV_CANDIDATES if os.path.exists(p)), "uv")
 
 # --- Usage-logger wedges (:5021, :5023, :5025) — the third local layer between
 # claude and the proxy that claude-glm.cmd / claude-glm-alt.cmd / claude-ink.cmd spawn.
 # Not monitored by fleet_panel.TUNNELS (the dashboard only shows tunnel+proxy);
 # they die as collateral when the proxy heal walks a process tree. Scoped
-# to glm + glm-alt + ink only (kimi/minimax/etc. left unmanaged by request —
-# user does not want extra background processes).
+# to glm + glm-alt + ink only (kimi/minimax/opus/enterprise-LLM-gateway/uptimize loggers left
+# unmanaged by request — user does not want extra background processes).
 #
 # tunnel_port -> logger config: (logger_port, upstream_proxy_port, route_name, log_filename)
 # gate: logger heal ONLY runs when its upstream proxy is up (dead upstream = spin-loop).
@@ -92,10 +148,15 @@ LOGGER_CONFIG = {
     8103: dict(logger_port=5021, upstream=5007, route="hpc",     usage_log="hpc.jsonl"),
     # GLM-old alias: logger writes to hpc-old.jsonl (kept separate for A/B).
     8113: dict(logger_port=5031, upstream=5033, route="hpc-old", usage_log="hpc-old.jsonl"),
-    8106: dict(logger_port=5023, upstream=5027, route="hpc-alt", usage_log="hpc-alt.jsonl"),
     # REAP: fresh logger port 5029, route hpc-reap, separate JSONL for A/B.
     8109: dict(logger_port=5029, upstream=5017, route="hpc-reap", usage_log="hpc-reap.jsonl"),
     8110: dict(logger_port=5025, upstream=5015, route="hpc-ink", usage_log="hpc-ink.jsonl"),
+    # GLM-Vision: separate JSONL so vision A/B stays isolated from primary GLM's cost log.
+    8116: dict(logger_port=5039, upstream=5037, route="hpc-vision", usage_log="hpc-vision.jsonl"),
+    # Kimi K3: separate JSONL for the 2.8T sidecar (per claude-k3.cmd config).
+    8102: dict(logger_port=5032, upstream=5019, route="hpc-k3",     usage_log="hpc-k3.jsonl"),
+    # V4-Flash-0731: logger port 5011, route hpc-v4f, separate JSONL for A/B vs GLM.
+    8100: dict(logger_port=5011, upstream=5010, route="hpc-v4f", usage_log="hpc-v4f.jsonl"),
 }
 LOGGER_DIR = os.path.expanduser("~/repo/claude-code-proxy/llm-usage-logger")
 USAGE_LOG_DIR = os.path.expanduser("~/.proxy-ai/logs/llm-usage")
@@ -104,10 +165,10 @@ USAGE_LOG_DIR = os.path.expanduser("~/.proxy-ai/logs/llm-usage")
 # heal_local_stack on every cycle. If the incoming jobid differs from the
 # cached one AND the local tunnel is still up, we treat it as a same-node
 # hot-swap (job died + resubmitted on the same node) and force a repoint
-# just like case (b) — even though live_node == node. Motivating case: a GLM
-# job wedged on a node → cancelled → a fresh GLM job healthy on the same node.
-# Same node, different job, dead upstream port. Node comparison alone missed
-# it; jobid comparison catches it.
+# just like case (b) — even though live_node == node. Motivating case
+# (2026-07-13): GLM 2474044 wedged on fat007 → cancelled → GLM 2476473
+# healthy on fat007. Same node, different job, dead upstream port. Node
+# comparison alone missed it; jobid comparison catches it.
 _last_tunnel_jobid: dict = {}
 
 
@@ -139,7 +200,7 @@ def fetch_hpc_state():
     #   e = last 8 events.log lines
     #   tunnels = [{label, jobname, port, jobid, node, healthy}] for each TUNNEL
     #   our_jobs = {node: [{jobname, gpus}]}  (for the node grid ours/other split)
-    # Normalize jobname to a LIST (some rows use a tuple of alternatives;
+    # Normalize jobname to a LIST (minimax uses a tuple of alternatives;
     # others are a single string). The remote loop tries each, first RUNNING
     # match wins — squeue -n takes one name at a time.
     # Serialize each tunnel row for the remote resolver. Preserve:
@@ -172,7 +233,7 @@ def fetch_hpc_state():
         "        r=subprocess.run(['curl','-sf','--connect-timeout','3','--max-time','5',f'http://{node}:{port}/health'],capture_output=True,timeout=8)\n"
         "        return r.returncode==0\n"
         "    except Exception: return False\n"
-        f"LLM_BASE='{LLM_BASE}'\n"
+        "LLM_BASE='/shared/project/<account>/llm'\n"
         "def resolve_from_state(state_file):\n"
         "    # For jobname=None rows (pinned aliases): read node+jobid from the\n"
         "    # HPC state file. Verify the jobid is still RUNNING via squeue;\n"
@@ -196,7 +257,18 @@ def fetch_hpc_state():
         "            out=sh(f\"squeue -u $USER -h -n {jn} -t R -o '%i|%N'\")\n"
         "            for line in out.splitlines():\n"
         "                parts=line.strip().split('|')\n"
-        "                if len(parts)>=2 and parts[1].strip(): jid,node,jname=parts[0].strip(),parts[1].strip().split()[0],jn; break\n"
+        "                if len(parts)>=2 and parts[1].strip():\n"
+        "                    nl=parts[1].strip().split()[0]\n"
+        "                    # Multi-node jobs return a bracketed nodelist like\n"
+        "                    # fat-node[003,006,008] — ssh can't resolve that as a\n"
+        "                    # tunnel target, so expand to the FIRST node (the head,\n"
+        "                    # where the api_server listens). Without this the healer\n"
+        "                    # opens a tunnel to an unresolvable host -> forward fails\n"
+        "                    # -> probe fails -> reopen loop (observed: 9 zombie ssh\n"
+        "                    # tunnels on :8102, 'booting' status never cleared).\n"
+        "                    expanded=sh(f\"scontrol show hostnames {nl} 2>/dev/null\").split()\n"
+        "                    node=expanded[0] if expanded else nl\n"
+        "                    jid,jname=parts[0].strip(),jn; break\n"
         "            if jid: break\n"
         "    # port = the LOCAL laptop-side tunnel port (dashboard/healer key).\n"
         "    # remote_port = the HPC-side model port (differs for aliases).\n"
@@ -208,7 +280,14 @@ def fetch_hpc_state():
         "    if len(parts)<4 or parts[3]!='RUNNING' or not parts[0].strip(): continue\n"
         "    m=re.search(r'b200[=:](\\d+)',parts[2]); gpus=int(m.group(1)) if m else 0\n"
         "    if gpus==0: continue\n"
-        "    our_jobs.setdefault(parts[0].strip(),[]).append({'jobname':parts[1],'gpus':gpus})\n"
+        "    # Expand bracketed nodelist (e.g. fat-node[003,006-007]) into individual\n"
+        "    # nodes so render_node_grid keys by node, not by the raw bracket string.\n"
+        "    # Without this, multi-node jobs (K3 on fat003+006+007) show as 'other' (dim)\n"
+        "    # instead of 'ours' (cyan) in the node grid.\n"
+        "    nodes=sh(f\"scontrol show hostnames {parts[0].strip()} 2>/dev/null\").split()\n"
+        "    if not nodes: nodes=[parts[0].strip()]\n"
+        "    for n in nodes:\n"
+        "        our_jobs.setdefault(n,[]).append({'jobname':parts[1],'gpus':gpus})\n"
         "print(json.dumps({'s':s,'e':e,'tunnels':tunnels,'our_jobs':our_jobs}))\n"
     )
     b64 = base64.b64encode(script.encode()).decode()
@@ -216,7 +295,7 @@ def fetch_hpc_state():
     try:
         r = subprocess.run(
             SSH.split() + [remote],
-            capture_output=True, text=True, timeout=20)
+            capture_output=True, text=True, timeout=30)
         d = json.loads(r.stdout)
         state = json.loads(d["s"]) if d.get("s") else {}
         state["_tunnels"] = d.get("tunnels", [])
@@ -301,13 +380,24 @@ def log_event(level, msg):
 
 
 def kill_port_listeners(port):
-    """Kill any process listening on a local port (Windows). Returns count killed."""
+    """Kill any process listening on a local port (Windows). Returns count killed.
+    Two-pass because ssh tunnels accumulate zombies:
+      Pass 1: Get-NetTCPConnection -State Listen -> the ONE ssh holding the socket.
+      Pass 2: ssh.exe processes whose CommandLine references this port — these are
+              reopen-cycle orphans that never reached Listen (port already taken)
+              but persist as idle/ESTABLISHED processes. Without pass 2 they pile up:
+              observed 9 duplicate ssh tunnels on :8102 after repeated healer reopens,
+              each forwarding to a stale/dead target -> probes race -> 'booting' loop.
+    """
     try:
-        r = subprocess.run(
+        subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              f"Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue "
-             f"| ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"],
-            capture_output=True, text=True, timeout=10)
+             f"| ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}; "
+             f"Get-CimInstance Win32_Process -Filter \"Name='ssh.exe'\" -ErrorAction SilentlyContinue "
+             f"| Where-Object {{ $_.CommandLine -match '127.0.0.1:{port}' -or $_.CommandLine -match ':{port}:' }} "
+             f"| ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"],
+            capture_output=True, text=True, timeout=15)
         return 1  # best-effort
     except Exception:
         return 0
@@ -326,16 +416,14 @@ def reopen_tunnel(local_port, node, remote_port):
           ALERTs for :8106 yet the port never came up. A direct `ssh -L ... -N`
           stays up reliably (verified: plain tunnel survived probes + HEALTH OK).
     Direct Popen with CREATE_NO_WINDOW backgrounds ssh as a real long-lived process
-    with proper stdio, no shell, no `start`, no popup.
-
-    NOTE: replace the SSH target below with your own login host/user."""
+    with proper stdio, no shell, no `start`, no popup."""
     try:
         import subprocess as sp
         sp.Popen(
             ["ssh", "-L", f"127.0.0.1:{local_port}:{node}:{remote_port}", "-N",
              "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
              "-o", "ExitOnForwardFailure=yes", "-o", "ConnectTimeout=8",
-             "user@hpc-login.example.com"],
+             "user@hpc-cluster.example.com"],
             creationflags=0x08000000,  # CREATE_NO_WINDOW — no console popup, real process
             stdin=sp.DEVNULL, stdout=sp.DEVNULL, stderr=sp.DEVNULL,
         )
@@ -344,43 +432,82 @@ def reopen_tunnel(local_port, node, remote_port):
         return False
 
 
+def _kill_port(port):
+    """Force-kill whatever process is LISTENING on 127.0.0.1:port, if any.
+    A manual restart_proxy()/restart_logger() call must be able to replace an
+    already-running-but-misconfigured process, not just fill a gap: a fresh
+    `uv run server.py` silently fails to bind (and exits) if the old process
+    is still squatting on the port, so the stale process just keeps serving
+    with its old env. Discovered 2026-08-04 fixing the PROFILE/BACKEND_URL
+    env bug — the new (correct) process never actually started; the old
+    (defaulting to PROFILE=glm52, BACKEND_URL=localhost:8103) one kept
+    answering and 500'd every request."""
+    try:
+        out = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0] == "TCP" and parts[1].endswith(f":{port}") and parts[-2] == "LISTENING":
+                subprocess.run(["taskkill", "/PID", parts[-1], "/F"],
+                                capture_output=True, timeout=10)
+    except Exception:
+        pass
+
+
 def restart_proxy(tunnel_port, cfg):
     """Restart the claude-code-proxy for a model. cfg = PROXY_CONFIG[tunnel_port]."""
     proxy_port = cfg["proxy_port"]
     model = cfg["model"]
     ctx = cfg["ctx"]
     extra = cfg["extra"]
+    profile = cfg["profile"]
     os.makedirs(LOG_DIR, exist_ok=True)
     log_file = f"{LOG_DIR}\\watch-heal-{proxy_port}.log"
-    # Build the env string for the proxy subprocess.
+    # Build the env string for the proxy subprocess. These names MUST match
+    # what claude-code-proxy/server.py actually reads (PROFILE/PORT/
+    # BACKEND_URL/BACKEND_MODEL/ROUTE_NAME/BACKEND_CONTEXT_LIMIT) — NOT the
+    # OPENAI_*/BIG_MODEL/SMALL_MODEL/PREFERRED_PROVIDER names this used to set,
+    # none of which server.py ever reads (see PROXY_CONFIG note above).
+    # BACKEND_URL is the bare base with NO trailing /v1 — server.py appends
+    # /v1/chat/completions itself at each call site.
     env_lines = [
-        f"set OPENAI_API_KEY=none",
-        f"set OPENAI_BASE_URL=http://localhost:{tunnel_port}/v1",
-        f"set BIG_MODEL={model}",
-        f"set SMALL_MODEL={model}",
-        f"set PREFERRED_PROVIDER=openai",
+        f"set PROFILE={profile}",
         f"set PORT={proxy_port}",
         f"set HOST=127.0.0.1",
+        f"set BACKEND_URL=http://localhost:{tunnel_port}",
+        f"set BACKEND_MODEL={model}",
         f"set BACKEND_CONTEXT_LIMIT={ctx}",
     ]
+    if cfg.get("route"):
+        env_lines.append(f"set ROUTE_NAME={cfg['route']}")
     for k, v in extra.items():
         env_lines.append(f"set {k}={v}")
     env_lines.append("set PYTHONIOENCODING=utf-8")
     env_lines.append("set PYTHONUTF8=1")
     env_block = "&& ".join(env_lines)
-    bat_cmd = f'@echo off\r\ncd /d "{PROXY_DIR}"\r\n{env_block}&& uv run server.py >> "{log_file}" 2>&1'
+    bat_cmd = f'@echo off\r\ncd /d "{PROXY_DIR}"\r\n{env_block}&& "{UV_EXE}" run server.py >> "{log_file}" 2>&1'
     bat_path = f"{LOG_DIR}\\heal-proxy-{proxy_port}.bat"
     try:
+        _kill_port(proxy_port)  # else the old (possibly misconfigured) process keeps the port
         with open(bat_path, "w") as f:
             f.write(bat_cmd)
         # CREATE_NO_WINDOW (0x08000000), NOT DETACHED_PROCESS (0x8). DETACHED
         # makes a NEW console for the child -> a popup window flashes every heal
         # cycle (the proxy-boot popup the user saw). This mirrors reopen_tunnel's
-        # fix. We still use cmd /c the .bat because the env_block is batch syntax
-        # (set X=Y&&), but CREATE_NO_WINDOW suppresses the window.
+        # fix (line ~249). We still use cmd /c the .bat because the env_block is
+        # batch syntax (set X=Y&&), but CREATE_NO_WINDOW suppresses the window.
+        # stdin/stdout/stderr MUST be DEVNULL: the proxy is long-lived, and
+        # without this it inherits the caller's stdout/stderr pipe handles.
+        # Any caller that waits for that pipe to reach EOF (scripts, CI,
+        # `cmd /c "... 2>&1"` capture) blocks forever, since the long-lived
+        # child never closes its end. Discovered 2026-08-04: `proxy-ai <model>`
+        # hung indefinitely under captured-output invocation even though the
+        # oneshot script itself had already finished and printed everything.
         subprocess.Popen(
             ["cmd", "/c", bat_path],
-            creationflags=0x08000000)  # CREATE_NO_WINDOW — no console popup
+            creationflags=0x08000000,  # CREATE_NO_WINDOW — no console popup
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except Exception:
         return False
@@ -404,14 +531,16 @@ def restart_logger(tunnel_port, cfg):
         f"set HOST=127.0.0.1",
         f"set PORT={lport}",
     ])
-    bat_cmd = f'@echo off\r\ncd /d "{LOGGER_DIR}"\r\n{env_block}&& uv run usage_logger.py >> "{stderr_log}" 2>&1'
+    bat_cmd = f'@echo off\r\ncd /d "{LOGGER_DIR}"\r\n{env_block}&& "{UV_EXE}" run usage_logger.py >> "{stderr_log}" 2>&1'
     bat_path = f"{LOG_DIR}\\heal-logger-{lport}.bat"
     try:
+        _kill_port(lport)  # see restart_proxy's _kill_port call — same stale-process bind bug
         with open(bat_path, "w") as f:
             f.write(bat_cmd)
         subprocess.Popen(
             ["cmd", "/c", bat_path],
-            creationflags=0x08000000)  # CREATE_NO_WINDOW
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # see restart_proxy
         return True
     except Exception:
         return False
@@ -487,9 +616,9 @@ def heal_local_stack(tunnels_remote, local_health):
         #   (b2) live_node == node BUT last-seen jobid != current jobid
         #                              -> job died + resubmitted on same node;
         #                                 tunnel still forwards to a dead port.
-        # Both trigger repoint+reopen. Case (b2) added after a GLM wedge +
-        # resubmit on the same node needed manual rewire because case (b1) alone
-        # didn't fire.
+        # Both trigger repoint+reopen. Case (b2) added 2026-07-13 after GLM
+        # 2474044 wedge + resubmit-as-2476473 on same fat007 needed manual
+        # rewire because case (b1) alone didn't fire.
         if tstate in ("up", "listening"):
             live_node = _tunnel_node(tport)
             last_jid = _last_tunnel_jobid.get(tport)
@@ -676,11 +805,11 @@ def _tunnel_from_remote(lookup, jobname):
     tuple that fleet_panel.render_tunnels expects. Avoids the panel trying to run
     squeue/curl locally on the laptop.
 
-    jobname may be a STRING (GLM rows) or a TUPLE of alternatives (e.g. a model
-    with two serve variants sharing one row). The lookup is keyed by the
-    RESOLVED jobname string, so for a tuple we try each alternative — a
-    single-string .get(tuple) always misses, which was the 'not deployed' bug
-    (tuple jobname != resolved string)."""
+    jobname may be a STRING (GLM rows) or a TUPLE of alternatives (MiniMax:
+    minimax-m3-nvfp4 / minimax-m3-serve share one row). The lookup is keyed by
+    the RESOLVED jobname string, so for a tuple we try each alternative — a
+    single-string .get(tuple) always misses, which was the MiniMax 'not deployed'
+    bug (tuple jobname != resolved string)."""
     if isinstance(jobname, (tuple, list)):
         names = list(jobname)
     else:
