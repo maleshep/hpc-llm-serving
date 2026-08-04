@@ -1,0 +1,11 @@
+{
+  "asr_endpoint": "http://localhost:8200",
+  "tts_endpoint": "http://localhost:8300",
+  "hotkey": "ctrl+alt+l",
+  "silence_threshold": 500,
+  "silence_duration_ms": 1500,
+  "min_recording_ms": 500,
+  "language": "English",
+  "auto_stop": true,
+  "position": "bottom-center"
+}

@@ -1,0 +1,23 @@
+asr:
+  active: faster-whisper
+  backends:
+    faster-whisper:
+      class: backends.faster_whisper.FasterWhisperASR
+      model: large-v3-turbo
+      compute_type: int8
+      device: cuda
+    qwen-audio:
+      class: backends.legacy_qwen.QwenAudioASR
+      model_path: /shared/project/hpc-llm/models/qwen2-audio-7b
+      device: cuda
+
+tts:
+  active: f5-tts
+  backends:
+    f5-tts:
+      class: backends.f5tts.F5TTSBackend
+      model: SWivid/F5-TTS
+      device: cuda
+    cosyvoice:
+      class: backends.legacy_cosyvoice.CosyVoiceTTS
+      model_path: /shared/project/hpc-llm/models/cosyvoice3-0.5b

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenWispr</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #14141f;
+  --border: #2a2a3a;
+  --text: #e8e8f0;
+  --text-dim: #8888aa;
+  --accent: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+  --recording: #ef4444;
+  --recording-glow: rgba(239, 68, 68, 0.4);
+  --success: #22c55e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+}
+
+.container { width: 100%; max-width: 640px; }
+
+header { text-align: center; margin-bottom: 2rem; }
+header h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+header p { color: var(--text-dim); font-size: 0.85rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.tab {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text-dim);
+  border: none;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+.tab:hover:not(.active) { background: var(--surface); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Record Button */
+.record-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.record-btn {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+
+.record-btn.recording {
+  border-color: var(--recording);
+  box-shadow: 0 0 32px var(--recording-glow);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.record-btn.processing {
+  border-color: var(--accent);
+}
+
+.record-btn::before {
+  content: '';
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: all 0.2s ease;
+}
+
+.record-btn.recording::before {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--recording);
+}
+
+.record-btn.processing::before {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-text {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  min-height: 1.2em;
+}
+
+.status-text.recording { color: var(--recording); }
+.status-text.processing { color: var(--accent); }
+.status-text.error { color: var(--recording); }
+
+/* Waveform */
+.waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.waveform.active { opacity: 1; }
+
+.waveform-bar {
+  width: 3px;
+  height: 6px;
+  background: var(--recording);
+  border-radius: 2px;
+  animation: wave 0.6s ease-in-out infinite;
+}
+
+.waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+.waveform-bar:nth-child(5) { animation-delay: 0.4s; }
+.waveform-bar:nth-child(6) { animation-delay: 0.15s; }
+.waveform-bar:nth-child(7) { animation-delay: 0.25s; }
+
+@keyframes wave {
+  0%, 100% { height: 6px; }
+  50% { height: 26px; }
+}
+
+/* Result */
+.result-section { display: none; }
+.result-section.visible { display: block; }
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.result-header h3 {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.result-meta { font-size: 0.7rem; color: var(--text-dim); }
+
+.result-text {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  padding: 0.75rem 1rem;
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+  min-height: 2.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+
+.action-btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover { border-color: var(--accent); background: rgba(99, 102, 241, 0.1); }
+.action-btn.copied { border-color: var(--success); color: var(--success); }
+.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.action-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.action-btn.primary:hover { background: #5558e6; }
+
+/* Form elements */
+.form-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.input {
+  flex: 1;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.input:focus { outline: none; border-color: var(--accent); }
+select.input { max-width: 130px; cursor: pointer; }
+textarea.input { resize: vertical; min-height: 3rem; }
+
+label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+
+audio { width: 100%; margin-top: 0.5rem; border-radius: 8px; }
+
+/* Voice clone upload area */
+.upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.upload-area:hover { border-color: var(--accent); background: rgba(99, 102, 241, 0.03); }
+.upload-area.has-file { border-color: var(--success); border-style: solid; }
+.upload-area input { display: none; }
+
+.upload-area .icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.upload-area .label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.upload-area .filename {
+  font-size: 0.8rem;
+  color: var(--success);
+  margin-top: 0.25rem;
+}
+
+/* Keyboard hint */
+.keyboard-hint {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-top: 0.25rem;
+}
+
+kbd {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.68rem;
+  font-family: inherit;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+footer .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  margin-right: 4px;
+  animation: blink 2s ease-in-out infinite;
+}
+
+footer .dot.offline { background: var(--recording); animation: none; }
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Record-from-browser for clone */
+.mini-recorder {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.mini-record-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.mini-record-btn::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--recording);
+}
+
+.mini-record-btn.recording {
+  border-color: var(--recording);
+  box-shadow: 0 0 12px var(--recording-glow);
+}
+
+.mini-record-btn.recording::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.mini-status { font-size: 0.78rem; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>OpenWispr</h1>
+    <p>Voice-to-text & text-to-speech on HPC</p>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="transcribe">Transcribe</button>
+    <button class="tab" data-tab="speak">Speak</button>
+    <button class="tab" data-tab="clone">Clone Voice</button>
+  </div>
+
+  <!-- Tab 1: Transcribe (ASR) -->
+  <div class="tab-content active" id="tab-transcribe">
+    <div class="card">
+      <div class="record-section">
+        <button class="record-btn" id="recordBtn" title="Click or hold Space to record"></button>
+        <div class="waveform" id="waveform">
+          <div class="waveform-bar"></div><div class="waveform-bar"></div>
+          <div class="waveform-bar"></div><div class="waveform-bar"></div>
+          <div class="waveform-bar"></div><div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+        </div>
+        <div class="status-text" id="statusText">Click to record or hold Space</div>
+        <div class="keyboard-hint"><kbd>Space</kbd> hold to record &nbsp; <kbd>Esc</kbd> cancel</div>
+        <div style="margin-top:0.75rem">
+          <select class="input" id="asrLang" style="width:auto;display:inline-block;padding:0.3rem 0.6rem;font-size:0.8rem">
+            <option value="English" selected>English</option>
+            <option value="German">German</option>
+            <option value="French">French</option>
+            <option value="Spanish">Spanish</option>
+            <option value="Chinese">Chinese</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Korean">Korean</option>
+            <option value="Hindi">Hindi</option>
+            <option value="auto">Auto-detect</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-section" id="resultSection">
+      <div class="result-header">
+        <h3>Transcription</h3>
+        <span class="result-meta" id="resultMeta"></span>
+      </div>
+      <div class="result-text" id="resultText"></div>
+      <div class="actions">
+        <button class="action-btn" id="copyBtn">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Speak (TTS) -->
+  <div class="tab-content" id="tab-speak">
+    <div class="card">
+      <div class="form-col">
+        <label>Text</label>
+        <textarea class="input" id="ttsText" placeholder="Type text to speak..." rows="3"></textarea>
+      </div>
+      <div class="form-row">
+        <div style="flex:1">
+          <label>Voice</label>
+          <select class="input" id="ttsSpeaker" style="width:100%;max-width:none">
+            <option value="ryan">Ryan — dynamic male, strong rhythm (EN)</option>
+            <option value="aiden">Aiden — sunny American male (EN)</option>
+            <option value="vivian">Vivian — bright young female (ZH)</option>
+            <option value="serena">Serena — warm gentle female (ZH)</option>
+            <option value="uncle_fu">Uncle Fu — seasoned low male (ZH)</option>
+            <option value="dylan">Dylan — Beijing male, clear (ZH)</option>
+            <option value="eric">Eric — Chengdu male, husky (ZH)</option>
+            <option value="ono_anna">Ono Anna — playful female (JP)</option>
+            <option value="sohee">Sohee — warm female (KR)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-col">
+        <label>Emotion / Style (optional)</label>
+        <input class="input" id="ttsInstruct" placeholder="e.g. 'Very happy', 'Speak slowly and sadly'">
+      </div>
+      <button class="action-btn primary" id="ttsBtn" style="width:100%">Generate Speech</button>
+      <audio id="ttsAudio" controls style="display:none"></audio>
+    </div>
+  </div>
+
+  <!-- Tab 3: Clone Voice -->
+  <div class="tab-content" id="tab-clone">
+    <div class="card">
+      <div class="form-col">
+        <label>1. Your voice sample (3-10 seconds)</label>
+        <div class="upload-area" id="cloneUpload">
+          <div class="icon">&#127908;</div>
+          <div class="label">Drop a WAV file or click to upload</div>
+          <div class="filename" id="cloneFilename"></div>
+          <input type="file" id="cloneFile" accept="audio/*">
+        </div>
+        <div class="mini-recorder">
+          <button class="mini-record-btn" id="cloneRecordBtn" title="Record a sample"></button>
+          <span class="mini-status" id="cloneRecordStatus">Or record directly</span>
+        </div>
+      </div>
+      <div class="form-col">
+        <label>2. What your sample says (optional, improves quality)</label>
+        <input class="input" id="cloneRefText" placeholder="Transcript of your voice sample...">
+      </div>
+      <div class="form-col">
+        <label>3. Text to speak in your voice</label>
+        <textarea class="input" id="cloneText" placeholder="Type what you want said in your voice..." rows="3"></textarea>
+      </div>
+      <div class="form-row">
+        <select class="input" id="cloneLang">
+          <option value="English">English</option>
+          <option value="Chinese">Chinese</option>
+          <option value="German">German</option>
+          <option value="French">French</option>
+          <option value="Japanese">Japanese</option>
+          <option value="Korean">Korean</option>
+          <option value="Spanish">Spanish</option>
+          <option value="Italian">Italian</option>
+          <option value="Portuguese">Portuguese</option>
+          <option value="Russian">Russian</option>
+        </select>
+        <button class="action-btn primary" id="cloneBtn" style="flex:1" disabled>Clone & Speak</button>
+      </div>
+      <audio id="cloneAudio" controls style="display:none"></audio>
+    </div>
+  </div>
+
+  <footer>
+    <span class="dot" id="statusDot"></span>
+    <span id="footerStatus">Checking...</span>
+  </footer>
+</div>
+
+<script>
+const ASR_URL = 'http://localhost:8200';
+const TTS_URL = 'http://localhost:8200';
+
+// --- DOM ---
+const recordBtn = document.getElementById('recordBtn');
+const waveform = document.getElementById('waveform');
+const statusText = document.getElementById('statusText');
+const resultSection = document.getElementById('resultSection');
+const resultText = document.getElementById('resultText');
+const resultMeta = document.getElementById('resultMeta');
+const copyBtn = document.getElementById('copyBtn');
+const statusDot = document.getElementById('statusDot');
+const footerStatus = document.getElementById('footerStatus');
+
+// --- Tabs ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+// --- Health ---
+async function checkHealth() {
+  try {
+    const health = await fetch(`${ASR_URL}/health`).then(r => r.json());
+    statusDot.classList.remove('offline');
+    const asr = health.asr || {};
+    const tts = health.tts || {};
+    let s = `ASR: ${asr.model || asr.backend || 'unknown'}`;
+    if (asr.vram_gb !== undefined) s += ` (${asr.vram_gb}GB)`;
+    if (tts.model || tts.backend) s += ` | TTS: ${tts.model || tts.backend}`;
+    footerStatus.textContent = s;
+  } catch {
+    statusDot.classList.add('offline');
+    footerStatus.textContent = 'Offline — start SSH tunnel';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+
+// --- WAV encoder (browser-side: PCM float32 → 16-bit WAV) ---
+function encodeWAV(audioBuffer) {
+  const numChannels = 1;
+  const sampleRate = 16000;
+
+  // Resample to 16kHz mono
+  const offlineCtx = new OfflineAudioContext(numChannels, audioBuffer.duration * sampleRate, sampleRate);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+  return offlineCtx.startRendering().then(rendered => {
+    const samples = rendered.getChannelData(0);
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+
+    // WAV header
+    const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+
+    // Convert float32 to int16
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  });
+}
+
+// --- Recording ---
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let recordStart = 0;
+
+async function startRecording() {
+  if (isRecording) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const webmBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+      await transcribeFromBlob(webmBlob);
+    };
+    mediaRecorder.start(100);
+    isRecording = true;
+    recordStart = Date.now();
+    recordBtn.classList.add('recording');
+    waveform.classList.add('active');
+    statusText.textContent = 'Recording...';
+    statusText.className = 'status-text recording';
+  } catch (e) {
+    statusText.textContent = 'Microphone access denied';
+    statusText.className = 'status-text error';
+  }
+}
+
+function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+  mediaRecorder.stop();
+  recordBtn.classList.remove('recording');
+  recordBtn.classList.add('processing');
+  waveform.classList.remove('active');
+  statusText.textContent = 'Converting & sending...';
+  statusText.className = 'status-text processing';
+}
+
+function cancelRecording() {
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+  const origOnStop = mediaRecorder.onstop;
+  mediaRecorder.onstop = () => { mediaRecorder.stream.getTracks().forEach(t => t.stop()); };
+  mediaRecorder.stop();
+  recordBtn.classList.remove('recording');
+  waveform.classList.remove('active');
+  statusText.textContent = 'Cancelled';
+  statusText.className = 'status-text';
+  setTimeout(() => { statusText.textContent = 'Click to record or hold Space'; }, 1000);
+}
+
+async function transcribeFromBlob(webmBlob) {
+  try {
+    // Decode webm → AudioBuffer → WAV
+    const arrayBuf = await webmBlob.arrayBuffer();
+    const audioCtx = new AudioContext({ sampleRate: 48000 });
+    const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+    audioCtx.close();
+    const wavBlob = await encodeWAV(audioBuf);
+
+    const t0 = performance.now();
+    const form = new FormData();
+    form.append('audio', wavBlob, 'recording.wav');
+    const asrLang = document.getElementById('asrLang')?.value || 'en';
+    if (asrLang !== 'auto') form.append('language', asrLang);
+
+    const res = await fetch(`${ASR_URL}/transcribe`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+    const data = await res.json();
+    const totalMs = Math.round(performance.now() - t0);
+
+    recordBtn.classList.remove('processing');
+    statusText.textContent = 'Done';
+    statusText.className = 'status-text';
+
+    resultText.textContent = data.text || '(no speech detected)';
+    resultMeta.textContent = `${data.language || 'auto'} · ${data.processing_ms}ms server · ${totalMs}ms total`;
+    resultSection.classList.add('visible');
+
+    setTimeout(() => { statusText.textContent = 'Click to record or hold Space'; }, 2000);
+  } catch (e) {
+    recordBtn.classList.remove('processing');
+    statusText.textContent = `Error: ${e.message}`;
+    statusText.className = 'status-text error';
+    console.error(e);
+  }
+}
+
+// --- Record button ---
+recordBtn.addEventListener('mousedown', e => {
+  e.preventDefault();
+  if (isRecording) stopRecording();
+  else startRecording();
+});
+recordBtn.addEventListener('mouseup', e => {
+  if (isRecording && (Date.now() - recordStart > 300)) stopRecording();
+});
+
+// --- Keyboard ---
+let spaceDown = false;
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space' && !spaceDown) { e.preventDefault(); spaceDown = true; startRecording(); }
+  if (e.code === 'Escape' && isRecording) { e.preventDefault(); cancelRecording(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space' && spaceDown) { e.preventDefault(); spaceDown = false; stopRecording(); }
+});
+
+// --- Copy ---
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(resultText.textContent);
+  copyBtn.textContent = 'Copied!';
+  copyBtn.classList.add('copied');
+  setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 2000);
+});
+
+// --- TTS ---
+const ttsBtn = document.getElementById('ttsBtn');
+const ttsAudio = document.getElementById('ttsAudio');
+
+ttsBtn.addEventListener('click', async () => {
+  const text = document.getElementById('ttsText').value.trim();
+  if (!text) return;
+  ttsBtn.textContent = 'Generating...';
+  ttsBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('text', text);
+    form.append('voice', document.getElementById('ttsSpeaker').value);
+    const res = await fetch(`${TTS_URL}/synthesize`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    ttsAudio.src = URL.createObjectURL(blob);
+    ttsAudio.style.display = 'block';
+    ttsAudio.play();
+  } catch (e) { alert(`TTS error: ${e.message}`); }
+  finally { ttsBtn.textContent = 'Generate Speech'; ttsBtn.disabled = false; }
+});
+
+// --- Voice Clone ---
+const cloneUpload = document.getElementById('cloneUpload');
+const cloneFile = document.getElementById('cloneFile');
+const cloneFilename = document.getElementById('cloneFilename');
+const cloneBtn = document.getElementById('cloneBtn');
+const cloneAudio = document.getElementById('cloneAudio');
+const cloneRecordBtn = document.getElementById('cloneRecordBtn');
+const cloneRecordStatus = document.getElementById('cloneRecordStatus');
+
+let cloneBlob = null;
+
+// File upload
+cloneUpload.addEventListener('click', () => cloneFile.click());
+cloneUpload.addEventListener('dragover', e => { e.preventDefault(); cloneUpload.style.borderColor = 'var(--accent)'; });
+cloneUpload.addEventListener('dragleave', () => { cloneUpload.style.borderColor = ''; });
+cloneUpload.addEventListener('drop', e => {
+  e.preventDefault();
+  cloneUpload.style.borderColor = '';
+  if (e.dataTransfer.files.length) handleCloneFile(e.dataTransfer.files[0]);
+});
+cloneFile.addEventListener('change', () => { if (cloneFile.files.length) handleCloneFile(cloneFile.files[0]); });
+
+function handleCloneFile(file) {
+  cloneBlob = file;
+  cloneFilename.textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  cloneUpload.classList.add('has-file');
+  cloneBtn.disabled = false;
+}
+
+// Record voice sample for clone
+let cloneRecording = false;
+let cloneRecorder = null;
+let cloneChunks = [];
+
+cloneRecordBtn.addEventListener('click', async () => {
+  if (cloneRecording) {
+    // Stop
+    cloneRecording = false;
+    cloneRecorder.stop();
+    cloneRecordBtn.classList.remove('recording');
+    cloneRecordStatus.textContent = 'Processing...';
+  } else {
+    // Start
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      cloneRecorder = new MediaRecorder(stream);
+      cloneChunks = [];
+      cloneRecorder.ondataavailable = e => { if (e.data.size > 0) cloneChunks.push(e.data); };
+      cloneRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const webm = new Blob(cloneChunks, { type: cloneRecorder.mimeType });
+        // Convert to WAV
+        const ab = await webm.arrayBuffer();
+        const ctx = new AudioContext({ sampleRate: 48000 });
+        const buf = await ctx.decodeAudioData(ab);
+        ctx.close();
+        cloneBlob = await encodeWAV(buf);
+        const dur = (buf.duration).toFixed(1);
+        cloneFilename.textContent = `Recorded (${dur}s, ${(cloneBlob.size/1024).toFixed(0)} KB)`;
+        cloneUpload.classList.add('has-file');
+        cloneBtn.disabled = false;
+        cloneRecordStatus.textContent = `${dur}s recorded — ready`;
+      };
+      cloneRecorder.start(100);
+      cloneRecording = true;
+      cloneRecordBtn.classList.add('recording');
+      cloneRecordStatus.textContent = 'Recording sample... click to stop';
+    } catch {
+      cloneRecordStatus.textContent = 'Mic access denied';
+    }
+  }
+});
+
+// Clone submit
+cloneBtn.addEventListener('click', async () => {
+  const text = document.getElementById('cloneText').value.trim();
+  if (!text || !cloneBlob) return;
+  cloneBtn.textContent = 'Cloning...';
+  cloneBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('reference', cloneBlob, 'reference.wav');
+    form.append('ref_text', document.getElementById('cloneRefText').value);
+    form.append('text', text);
+    form.append('language', document.getElementById('cloneLang').value);
+    const res = await fetch(`${TTS_URL}/clone`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const blob = await res.blob();
+    cloneAudio.src = URL.createObjectURL(blob);
+    cloneAudio.style.display = 'block';
+    cloneAudio.play();
+  } catch (e) { alert(`Clone error: ${e.message}`); }
+  finally { cloneBtn.textContent = 'Clone & Speak'; cloneBtn.disabled = false; }
+});
+</script>
+</body>
+</html>
