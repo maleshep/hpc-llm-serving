@@ -1,0 +1,2893 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Chronicle | LLM Fine-Tuning on oneHPC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/motion@12.0.0/dist/motion.js"></script>
+<style>
+  :root {
+    --glow-indigo: rgba(99, 102, 241, 0.15);
+    --glow-emerald: rgba(16, 185, 129, 0.15);
+    --glow-red: rgba(239, 68, 68, 0.12);
+    --glow-amber: rgba(245, 158, 11, 0.12);
+    --glow-violet: rgba(139, 92, 246, 0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #09090b;
+    color: #fafafa;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+  }
+
+  /* Ambient background */
+  .ambient-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.08), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 80% 50%, rgba(16, 185, 129, 0.04), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 20% 80%, rgba(99, 102, 241, 0.04), transparent 60%);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.15); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.25); }
+
+  /* Layout */
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 3rem 2.5rem;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .header-left h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #fafafa, #a1a1aa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-left .subtitle {
+    color: #71717a;
+    font-size: 1rem;
+    margin-top: 0.5rem;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    border: 1px solid;
+  }
+  .badge-amber {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+  }
+  .badge-emerald {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+  }
+  .badge-red {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #f87171;
+  }
+  .badge-indigo {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.25);
+    color: #a5b4fc;
+  }
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  /* Section heading */
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #71717a;
+    margin-bottom: 1.25rem;
+  }
+
+  /* Metric cards */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 3rem;
+  }
+  .metric-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    padding: 1.5rem;
+    transition: all 0.2s;
+  }
+  .metric-card:hover {
+    border-color: rgba(255,255,255,0.12);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.4), transparent);
+  }
+  .metric-card .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #71717a;
+    font-weight: 500;
+  }
+  .metric-card .value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-top: 0.5rem;
+    letter-spacing: -0.02em;
+    color: #fafafa;
+  }
+  .metric-card .detail {
+    font-size: 13px;
+    color: #52525b;
+    margin-top: 0.375rem;
+  }
+  .metric-card.alert .value { color: #f59e0b; }
+  .metric-card.alert::before {
+    background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.5), transparent);
+  }
+
+  /* Section cards */
+  .section-card {
+    border-radius: 1.25rem;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    backdrop-filter: blur(12px);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .section-card-header {
+    padding: 1.5rem 1.75rem 0;
+  }
+  .section-card-body {
+    padding: 1.5rem 1.75rem 1.75rem;
+  }
+
+  /* Two-column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 960px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  /* Decision Flow — improved with more spacing */
+  .flow-container {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding: 2rem 1rem;
+    justify-content: center;
+  }
+  .flow-node {
+    flex-shrink: 0;
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.25rem;
+    font-size: 0.875rem;
+    text-align: center;
+    min-width: 155px;
+    max-width: 170px;
+    border: 1px solid;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .flow-node.fail {
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.04);
+  }
+  .flow-node.pass {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.06);
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.1);
+  }
+  .flow-node strong {
+    display: block;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #e4e4ef;
+  }
+  .flow-node .flow-sub {
+    font-size: 0.8125rem;
+    color: #71717a;
+  }
+  .flow-node .flow-result {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+  .flow-arrow {
+    flex-shrink: 0;
+    width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3f3f46;
+    font-size: 1.5rem;
+  }
+
+  /* VRAM diagrams — bar + legend below */
+  .vram-section {
+    padding: 0.5rem 0;
+  }
+  .vram-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+  }
+  .vram-header .vram-title {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #a1a1aa;
+  }
+  .vram-header .vram-pct {
+    font-size: 0.8125rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #52525b;
+  }
+  .vram-track {
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    overflow: hidden;
+  }
+  .vram-seg {
+    height: 100%;
+    transition: opacity 0.2s;
+  }
+  .vram-seg:hover { opacity: 0.85; }
+  .vram-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
+  .vram-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: #71717a;
+  }
+  .vram-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, #3f3f46, #27272a 80%, transparent);
+    border-radius: 1px;
+  }
+  .tl-item {
+    position: relative;
+    padding: 0.625rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.625rem;
+    font-size: 0.9375rem;
+    background: rgba(255,255,255,0.02);
+    border-left: 3px solid #ef4444;
+    transition: background 0.15s;
+  }
+  .tl-item:hover { background: rgba(255,255,255,0.04); }
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #18181b;
+    border: 2px solid #ef4444;
+  }
+  .tl-item.success { border-left-color: #10b981; }
+  .tl-item.success::before { border-color: #10b981; background: #10b981; }
+  .tl-item.pivot {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.04);
+    border: 1px solid rgba(245, 158, 11, 0.15);
+    border-left: 3px solid #f59e0b;
+    padding: 0.875rem 1rem;
+  }
+  .tl-item.pivot::before { border-color: #f59e0b; background: #f59e0b; }
+  .tl-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8125rem;
+    color: #71717a;
+    margin-right: 0.625rem;
+  }
+  .tl-error { font-size: 0.8125rem; color: #71717a; margin-top: 3px; }
+  .tl-success { font-size: 0.875rem; color: #34d399; margin-top: 3px; font-weight: 500; }
+
+  /* Reward bars */
+  .reward-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.875rem;
+  }
+  .reward-label {
+    width: 160px;
+    font-size: 0.8125rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #a1a1aa;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .reward-track {
+    flex: 1;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.04);
+    overflow: hidden;
+  }
+  .reward-fill {
+    height: 100%;
+    border-radius: 7px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .reward-value {
+    width: 50px;
+    font-size: 0.9375rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* Observation grid */
+  .obs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.25rem;
+  }
+  .obs-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    padding: 1.5rem;
+    transition: border-color 0.2s;
+  }
+  .obs-card:hover { border-color: rgba(255,255,255,0.1); }
+  .obs-card h4 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin-bottom: 0.625rem;
+    color: #e4e4ef;
+  }
+  .obs-card p {
+    font-size: 0.875rem;
+    color: #71717a;
+    line-height: 1.6;
+  }
+
+  /* Table */
+  table {
+    width: 100%;
+    font-size: 0.9375rem;
+    border-collapse: collapse;
+  }
+  th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #71717a;
+    text-align: left;
+    padding: 0.75rem 0.875rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  td {
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: #a1a1aa;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  td code {
+    font-size: 0.8125rem;
+    background: rgba(99, 102, 241, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #a5b4fc;
+  }
+
+  /* Storage bar */
+  .storage-bar-outer {
+    height: 10px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.05);
+    overflow: hidden;
+    margin: 0.5rem 0 0.375rem;
+  }
+  .storage-bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    background: linear-gradient(90deg, #6366f1, #818cf8);
+  }
+
+  /* Next steps */
+  .next-steps-list {
+    list-style: none;
+  }
+  .next-steps-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 0.9375rem;
+  }
+  .next-steps-list li:last-child { border-bottom: none; }
+  .step-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    background: rgba(99, 102, 241, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #a5b4fc;
+    margin-top: 2px;
+  }
+  .step-content { flex: 1; }
+  .step-content strong { color: #e4e4ef; font-size: 0.9375rem; }
+  .step-content .step-meta {
+    font-size: 0.8125rem;
+    color: #52525b;
+    margin-top: 4px;
+  }
+
+  /* Callout box */
+  .callout {
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    margin-top: 1.25rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .callout-amber {
+    background: rgba(245, 158, 11, 0.04);
+    border: 1px solid rgba(245, 158, 11, 0.15);
+    color: #d97706;
+  }
+  .callout-emerald {
+    background: rgba(16, 185, 129, 0.04);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    color: #059669;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    margin: 3rem 0;
+    border: none;
+  }
+
+  /* Header left */
+  .header-left h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #fafafa, #a1a1aa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-left .subtitle {
+    color: #71717a;
+    font-size: 1rem;
+    margin-top: 0.5rem;
+  }
+
+  /* Section blocks (agentic coding tab content blocks) */
+  .section-block {
+    margin-bottom: 2.5rem;
+  }
+  .section-block h3 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: #e4e4ef;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Flow chain (inline decision flow) */
+  .flow-chain {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Hero metrics (agentic coding tab top row) */
+  .hero-metrics {
+    display: grid;
+    gap: 1.25rem;
+    margin-bottom: 3rem;
+  }
+  .hero-metrics .metric-card {
+    text-align: center;
+  }
+  .metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fafafa;
+  }
+  .metric-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #71717a;
+    font-weight: 500;
+    margin-top: 0.375rem;
+  }
+
+  /* Section / Card (legacy wrapping) */
+  .section {
+    margin-bottom: 2.5rem;
+  }
+  .section > h2.section-title {
+    margin-bottom: 1.25rem;
+  }
+  .section-icon {
+    margin-right: 0.5rem;
+  }
+  .card {
+    border-radius: 1.25rem;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    backdrop-filter: blur(12px);
+    padding: 1.75rem;
+  }
+
+  /* Pulse */
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  .pulse { animation: pulse-glow 2s ease-in-out infinite; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 3rem 0 1rem;
+    font-size: 0.8125rem;
+    color: #3f3f46;
+    letter-spacing: 0.02em;
+  }
+  /* Tabs */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 2.5rem;
+    padding: 4px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+    width: fit-content;
+  }
+  .tab-btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #71717a;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-btn:hover { background: rgba(255,255,255,0.04); color: #a1a1aa; }
+  .tab-btn.active {
+    background: rgba(99, 102, 241, 0.12);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+  }
+  .tab-btn .tab-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .tab-content {
+    display: none;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .tab-content.active {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+    animation: fadeSlideIn 0.35s ease forwards;
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+<div class="ambient-bg"></div>
+<div class="container">
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <h1>Training Chronicle</h1>
+    <div class="subtitle">LLM Training &amp; Serving &middot; oneHPC &middot; 2026</div>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+    <span class="badge" style="background: rgba(167,139,246,0.08); border-color: rgba(167,139,246,0.25); color: #c4b5fd;">
+      <span class="badge-dot" style="background: #a78bfa;"></span>
+      GLM-5.2 ~220-250 tok/s
+    </span>
+    <span class="badge" style="background: rgba(20,184,166,0.08); border-color: rgba(20,184,166,0.25); color: #5eead4;">
+      <span class="badge-dot" style="background: #14b8a6;"></span>
+      MiniMax M3 ~119 tok/s · 64ms TTFT
+    </span>
+    <span class="badge badge-emerald">
+      <span class="badge-dot" style="background: #10b981;"></span>
+      Gemma-4 MMM
+    </span>
+  </div>
+</header>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('hpclaude')">
+    <span class="tab-dot" style="background: #c084fc;"></span>
+    Agentic Coding on HPC
+  </button>
+  <button class="tab-btn" onclick="switchTab('v4flash')">
+    <span class="tab-dot" style="background: #60a5fa;"></span>
+    V4-Flash / Fleet History
+  </button>
+  <button class="tab-btn" onclick="switchTab('gemma')">
+    <span class="tab-dot" style="background: #34d399;"></span>
+    Gemma-4-31B (59% win rate)
+  </button>
+  <button class="tab-btn" onclick="switchTab('qwen')">
+    <span class="tab-dot" style="background: #f59e0b;"></span>
+    Qwen3.6-35B (15% win rate)
+  </button>
+</div>
+
+<!-- ==================== HPC-CLAUDE TAB ==================== -->
+<div id="tab-hpclaude" class="tab-content active">
+
+<!-- Hero -->
+<div class="hero-metrics" style="grid-template-columns: repeat(3, 1fr) auto repeat(2, 1fr);">
+  <div class="metric-card">
+    <div class="metric-value" style="color: #a78bfa;">claude-glm</div>
+    <div class="metric-label">GLM-5.2 FP8 &middot; <strong>~220-250 tok/s</strong> &middot; 8&times;B200 &middot; 1M ctx</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color: #14b8a6;">claude-minimax</div>
+    <div class="metric-label">MiniMax M3 &middot; <strong>~119 tok/s</strong> &middot; 64ms TTFT &middot; multimodal</div>
+  </div>
+  <div class="metric-card" style="position: relative;">
+    <div class="metric-value" style="color: #ef4444; font-size: 1.5rem;">0 bytes</div>
+    <div class="metric-label">To Anthropic</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color: #34d399;">claude-gm</div>
+    <div class="metric-label">Gemma MMM &middot; 59% vs Sonnet</div>
+  </div>
+</div>
+
+<!-- Architecture -->
+<div class="section-block" data-animate>
+  <h3>Experiment: Self-Hosted Agentic Coding via HPC Models</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Route Claude Code through our own LLMs on oneHPC &mdash; zero cost, zero Anthropic dependency. <code>claude-code-proxy</code> (LiteLLM-based) translates Anthropic Messages API &rarr; OpenAI Chat Completions. Each model gets its own proxy instance, SSH tunnel, and launcher. Full tool calling, streaming, and multi-turn conversations work end-to-end.
+  </p>
+  <div style="background: rgba(192,132,252,0.05); border: 1px solid rgba(192,132,252,0.2); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; line-height: 1.8;">
+    <span style="color: #a78bfa;">claude-glm</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #c084fc;">proxy:5007</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #fbbf24;">tunnel:8103</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #34d399;">HPC:8103</span> (GLM-5.2, 8&times; B200, <strong>PRIMARY</strong>)<br>
+    <span style="color: #14b8a6;">claude-minimax</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #c084fc;">proxy:5014</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #fbbf24;">tunnel:8105</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #34d399;">HPC:8105</span> (MiniMax M3, 4&times; B200, 1M ctx)<br>
+    <span style="color: #60a5fa;">claude-gm</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #c084fc;">proxy:5006</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #fbbf24;">tunnel:8200</span> <span style="color: #71717a;">&rarr;</span> <span style="color: #34d399;">HPC:8200</span> (Gemma-4 MMM, 2&times; L40S)
+  </div>
+  <table style="width: 100%; margin-top: 1rem;">
+    <thead><tr><th>Agent</th><th>Model</th><th>Hardware</th><th>Speed</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td><code>claude-glm</code></td><td>GLM-5.2 FP8 (754B MoE, 40B active)</td><td>8&times; B200</td><td style="color: #a78bfa; font-weight: 600;">~220-250 tok/s</td><td>Primary coding — SGLang + EAGLE, 1M ctx, Terminal-Bench 81%</td></tr>
+      <tr><td><code>claude-minimax</code></td><td>MiniMax M3 MXFP8 (428B MoE, 23B active)</td><td>4&times; B200</td><td style="color: #14b8a6; font-weight: 600;">~119 tok/s · 64ms TTFT</td><td>Long-context (1M), multimodal (image+video), 64ms TTFT</td></tr>
+      <tr><td><code>claude-gm</code></td><td>Gemma-4-31B-MMM-SFT (31B dense)</td><td>2&times; L40S</td><td>23 tok/s</td><td>Pharma MMM domain</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Hot-Swap Zero-Downtime Resubmit (Jun 25, 2026) -->
+<div class="section-block" data-animate style="border-left: 3px solid #3b82f6; padding-left: 1.5rem;">
+  <h3 style="color: #3b82f6;">Hot-Swap Zero-Downtime Resubmit &mdash; Keeping GLM-5.2 Continuously Available (Jun 25, 2026)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    GLM-5.2 is the best coding model we serve (~220-250 tok/s, 754B MoE, 40B active, 1M ctx, Terminal-Bench 81%) &mdash; but its 3-day Slurm wall-time means it lapses every 3 days. A naive "let it expire then resubmit" causes a <strong style="color: #ef4444;">15-minute outage</strong> mid-work while DeepGEMM JIT-compiles 16K kernel variants from scratch. For a model that is the primary coding backend for daily Claude Code sessions, that downtime is unacceptable.
+  </p>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    The fix is a <strong style="color: #3b82f6;">rolling resubmit</strong> &mdash; same model, fresh instance, zero serving gap. Both instances briefly coexist on different nodes; ~15 min of double GPU allocation is acceptable given idle fat nodes available. This is NOT a model swap. It preserves the best model by booting a fresh copy before killing the aging one.
+  </p>
+  <table style="width: 100%; margin: 1rem 0;">
+    <thead><tr><th>Step</th><th>Action</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td><strong style="color: #3b82f6;">1</strong></td><td>Find idle fat node</td><td>8&times; B200 free via <code>sinfo -p fat -N</code></td></tr>
+      <tr><td><strong style="color: #3b82f6;">2</strong></td><td>Submit fresh instance</td><td><code>--qos=3d</code> (expensive boot &rarr; 3d, not 1d)</td></tr>
+      <tr><td><strong style="color: #3b82f6;">3</strong></td><td>Verify healthy</td><td>Probe <code>/v1/models</code> + confirm throughput after ~15-min cold boot</td></tr>
+      <tr><td><strong style="color: #3b82f6;">4</strong></td><td>Kill OLDER job</td><td>By least wall-time runway remaining &mdash; NOT by QoS number</td></tr>
+      <tr><td><strong style="color: #3b82f6;">5</strong></td><td>Switch tunnel</td><td>Point SSH tunnel + proxy to new node. Zero serving gap.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    <strong style="color: #f1f5f9;">QoS correction.</strong> Slurm QoS ("Quality of Service") is a priority tier + wall-time ceiling, not a performance setting. The old rule "always use <code>--qos=1d</code> for serving" was wrong &mdash; it forces daily resubmits on models that take 15 minutes to boot. The correct rule is <strong style="color: #3b82f6;">QoS by reload cost</strong>:
+  </p>
+  <table style="width: 100%; margin: 1rem 0;">
+    <thead><tr><th>Boot Cost</th><th>QoS</th><th>Examples</th></tr></thead>
+    <tbody>
+      <tr><td style="color: #ef4444; font-weight: 600;">Expensive (~15 min)</td><td><code>--qos=3d</code></td><td>GLM-5.2 (DeepGEMM JIT), MiniMax M3 (Triton JIT)</td></tr>
+      <tr><td style="color: #f59e0b; font-weight: 600;">Cheap (~1-2 min)</td><td><code>--qos=1d</code></td><td>Gemma-4 (native Transformers), Qwen3 (SGLang pip)</td></tr>
+      <tr><td style="color: #34d399; font-weight: 600;">Training</td><td><code>--qos=7d</code></td><td>SFT/GRPO/DPO jobs (long runs, resubmit cheap)</td></tr>
+    </tbody>
+  </table>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    <strong style="color: #f1f5f9;">Concrete instance:</strong> Current GLM-5.2 job expires 2026-06-27 09:45. Hot-swap planned for 2026-06-26 &mdash; submit fresh instance on a different node, wait ~15 min for DeepGEMM cold boot, verify <code>/v1/models</code> returns serving at expected throughput, then <code>scancel</code> the older job. ~15 min of double 8&times; B200 allocation is a trivial cost vs. a 15-min outage on the primary coding model.
+  </p>
+</div>
+
+<!-- GLM-5.2 Deployment Jun 2026 -->
+<div class="section-block" data-animate style="border-left: 3px solid #a78bfa; padding-left: 1.5rem;">
+  <h3 style="color: #a78bfa;">GLM-5.2 Deployed + MiniMax M3 Reality Check (Jun 17, 2026)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    GLM-5.2 dropped unexpectedly — 3 weeks after 5.1, same hardware footprint, dramatic improvements. Hot-swapped within hours. Fleet rationalized to 2 models.
+  </p>
+  <table style="width: 100%; margin: 1rem 0;">
+    <thead><tr><th>Benchmark</th><th style="color:#a78bfa;">GLM-5.2</th><th>GLM-5.1</th><th style="color:#14b8a6;">MiniMax M3</th><th>Delta (5.2 vs M3)</th></tr></thead>
+    <tbody>
+      <tr><td>Terminal-Bench 2.1</td><td style="color:#a78bfa;font-weight:600;">81.0%</td><td>63.5%</td><td>65.0%</td><td style="color:#a78bfa;">+16 pts</td></tr>
+      <tr><td>SWE-bench Pro</td><td style="color:#a78bfa;font-weight:600;">62.1%</td><td>58.4%</td><td>59.0%</td><td style="color:#a78bfa;">+3.1 pts</td></tr>
+      <tr><td>FrontierSWE</td><td style="color:#a78bfa;font-weight:600;">74.4%</td><td>30.5%</td><td>—</td><td>2.4× over 5.1</td></tr>
+      <tr><td>MCP-Atlas</td><td style="color:#a78bfa;font-weight:600;">76.8%</td><td>71.8%</td><td>74.2%</td><td style="color:#a78bfa;">+2.6 pts</td></tr>
+      <tr><td>GPQA-Diamond</td><td>91.2</td><td>86.2</td><td style="color:#14b8a6;font-weight:600;">93.0</td><td style="color:#14b8a6;">M3 +1.8</td></tr>
+    </tbody>
+  </table>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    <strong style="color: #f1f5f9;">MiniMax M3 reality</strong>: M3's marketing emphasized 1M context and MSA efficiency — both real. But on coding/agent benchmarks it sits between GLM-5.1 and 5.2, not above them. Its genuine advantages are <strong>multimodal</strong> (image+video), <strong>64ms TTFT</strong> (vs 206ms for GLM), and <strong>MSA efficiency at true 1M contexts</strong>. Keep for those use cases; GLM-5.2 is primary for everything else.
+  </p>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    <strong style="color: #f1f5f9;">Measured tok/s</strong>: GLM-5.2 <strong style="color:#a78bfa;">~220-250 tok/s</strong> (was 175-185 on 5.1 — +20% from improved MTP acceptance). MiniMax M3 <strong style="color:#14b8a6;">~119 tok/s</strong> stable.
+  </p>
+</div>
+
+<!-- Fleet Expansion Jun 2026 -->
+<div class="section-block" data-animate style="border-left: 3px solid #14b8a6; padding-left: 1.5rem;">
+  <h3 style="color: #14b8a6;">Fleet Expansion: Kimi K2.7 + MiniMax M3 (Jun 12-15, 2026)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Two new models deployed in rapid succession. Fleet grew from 2 to 3 active coding models on the fat partition.
+  </p>
+  <table style="width: 100%; margin: 1rem 0;">
+    <thead><tr><th>Model</th><th>Change</th><th>Tok/s</th><th>Key Feature</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Kimi K2.7-Code</strong></td><td>Hot-swap from K2.6</td><td style="color: #f97316; font-weight: 600;">~112</td><td>+22% coding benchmarks, &minus;30% thinking tokens</td></tr>
+      <tr><td><strong>MiniMax M3 MXFP8</strong></td><td>New deployment</td><td style="color: #14b8a6; font-weight: 600;">~75-80</td><td>1M context, MSA sparse attention, multimodal</td></tr>
+    </tbody>
+  </table>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    <strong style="color: #f1f5f9;">MiniMax M3 deployment</strong> required the <code>vllm/vllm-openai:minimax-m3</code> Docker image via Apptainer (M3 not in stable pip vLLM). A 2-day debugging saga through 6 distinct crash types: DeepGEMM JIT can't find nvcc → Spack gcc/Ubuntu glibc header mismatch → libcudart linking order → <code>VLLM_USE_BREAKABLE_CUDAGRAPH=0</code> disabling cudagraphs entirely (opposite of intended) → MSA Triton kernel JIT. Final working config: <code>CC=/usr/bin/gcc</code> (container Ubuntu gcc, not host Spack RHEL9 gcc), <code>--enable-expert-parallel</code>, breakable cudagraphs auto-enabled, DeepGEMM disabled, persistent Triton + torch-extensions caches.
+  </p>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Weights load in <strong style="color: #14b8a6;">46 seconds</strong> after first boot (Triton cache warm). <strong style="color: #14b8a6;">~75-80 tok/s</strong> measured. Competitive with Kimi and usable as daily driver for long-context workloads.
+  </p>
+</div>
+
+<!-- Tool Calling Fix -->
+<div class="section-block" data-animate>
+  <h3>Critical Fix: DeepSeek Tool Call Parser</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    DeepSeek-V4 uses a custom "DSML" markup language for tool calls instead of standard JSON function calls. Without a parser, SGLang returns raw DSML text, breaking Claude Code's tool use entirely.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.5rem;">Before (broken)</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap;">&lt;&#xFF5C;DSML&#xFF5C;tool_calls&gt;
+&lt;&#xFF5C;DSML&#xFF5C;invoke name="read_file"&gt;
+&lt;&#xFF5C;DSML&#xFF5C;parameter name="path"&gt;
+/tmp/test.txt
+&lt;/&#xFF5C;DSML&#xFF5C;invoke&gt;</code>
+    </div>
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">After (working)</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap;">{
+  "tool_calls": [{
+    "function": {
+      "name": "read_file",
+      "arguments": "{\"path\": \"/tmp/test.txt\"}"
+    }
+  }]
+}</code>
+    </div>
+  </div>
+</div>
+
+<!-- Proxy Tool Call Fix (2026-05-16) -->
+<div class="section-block" style="border-left: 3px solid #f59e0b; padding-left: 1.5rem;">
+  <h3 style="color: #f59e0b;">Critical Fix: Proxy Corrupts Tool History &rarr; Model Mimics Text</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    After multi-turn tool usage, Claude Code's agents would <em>describe</em> tool calls in text instead of executing them.
+    The output looked perfectly formatted &mdash; <code>[Tool: Agent (ID: call_xxx)] Input: {...}</code> &mdash; but nothing executed.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.5rem;">Root Cause</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap;">// Proxy's OpenAI conversion flattened
+// tool_use blocks to TEXT in history:
+elif block.type == "tool_use":
+  text += f"[Tool: {name} (ID: {id})]"
+  text += f"\nInput: {json}\n"
+
+// V4-Flash saw this pattern in history
+// and MIMICKED it instead of using DSML</code>
+    </div>
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">Fix: Proper OpenAI Format</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap;">// Assistant messages → tool_calls array
+{"role": "assistant",
+ "tool_calls": [{
+   "type": "function",
+   "function": {"name": "...", "arguments": "{}"}
+ }]}
+
+// Tool results → role: "tool"
+{"role": "tool",
+ "tool_call_id": "call_xxx",
+ "content": "result"}</code>
+    </div>
+  </div>
+  <p style="margin-top: 1rem; color: #fbbf24; font-size: 0.9em; font-weight: 500;">
+    &#x26A0; Key Insight: The model's conversation history IS its few-shot context. Corrupt tool structure &rarr; model outputs tools as text. This is undocumented in any proxy/LiteLLM repo.
+  </p>
+</div>
+
+<!-- V4-Flash vs Gemma-4 Benchmark -->
+<div class="section-block" data-animate>
+  <h3>V4-Flash vs Gemma-4 MMM: Speed vs Quality</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Head-to-head comparison on 6 tasks (3 MMM domain + 3 coding), judged by Opus 4.6 with position randomization.
+  </p>
+  <table style="width: 100%; margin-top: 1rem;">
+    <thead><tr><th>Metric</th><th>V4-Flash (4&times; B200)</th><th>Gemma-4-MMM (2&times; L40S)</th></tr></thead>
+    <tbody>
+      <tr><td>Throughput</td><td style="color: #60a5fa; font-weight: 600;">207 tok/s</td><td>10 tok/s</td></tr>
+      <tr><td>Speedup</td><td style="color: #60a5fa; font-weight: 600;">21.4&times;</td><td>1&times;</td></tr>
+      <tr><td>Quality wins</td><td>1/6</td><td style="color: #34d399; font-weight: 600;">4/6</td></tr>
+      <tr><td>MMM domain</td><td>1/2</td><td>1/2</td></tr>
+      <tr><td>General coding</td><td>0/3</td><td style="color: #34d399; font-weight: 600;">3/3</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 1rem; color: #71717a; font-size: 0.9em;">
+    <strong>Takeaway:</strong> Gemma-4 wins on quality (fine-tuned on pharma domain), V4-Flash wins on throughput (21&times; faster). For agent swarms needing speed + concurrency, V4-Flash is optimal. For single-turn MMM consulting, Gemma-4 gives better answers.
+  </p>
+</div>
+
+<!-- Air-Gap Security -->
+<div class="section-block" data-animate>
+  <h3 style="color: #ef4444;">Air-Gapped from Anthropic &mdash; Zero Bytes Sent</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Binary analysis of Claude Code revealed 5 traffic categories to <code>api.anthropic.com</code>. All are now blocked:
+  </p>
+  <table style="width: 100%; margin-top: 1rem;">
+    <thead><tr><th>Traffic Type</th><th>Endpoint</th><th>Blocked By</th></tr></thead>
+    <tbody>
+      <tr><td>LLM API calls</td><td><code>api.anthropic.com/v1/messages</code></td><td style="color: #34d399;"><code>ANTHROPIC_BASE_URL=localhost</code></td></tr>
+      <tr><td>OAuth</td><td><code>api.anthropic.com/oauth</code></td><td style="color: #34d399;"><code>CLAUDE_CODE_SKIP_OAUTH=1</code></td></tr>
+      <tr><td>Telemetry</td><td><code>api.anthropic.com/api/event_logging/batch</code></td><td style="color: #34d399;"><code>DISABLE_NONESSENTIAL_TRAFFIC=1</code></td></tr>
+      <tr><td>MCP Registry</td><td><code>api.anthropic.com/mcp-registry/v0/servers</code></td><td style="color: #34d399;">Same env var</td></tr>
+      <tr><td>Org Metrics</td><td><code>api.anthropic.com/api/claude_code/organizations</code></td><td style="color: #34d399;">Same env var</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 1rem; color: #71717a; font-size: 0.9em;">
+    The full traffic chain is: <code>claude-ds &rarr; localhost:5005 &rarr; localhost:8100 &rarr; SSH tunnel &rarr; HPC internal node</code>. No external URLs contacted at any point. Not Anthropic, not Uptimize, not any cloud API.
+  </p>
+</div>
+
+<!-- V4-Pro Upgrade Path -->
+<div class="section-block" data-animate>
+  <h3 style="color: #c084fc;">DeepSeek-V4-Pro &mdash; The 1.6 Trillion Parameter Upgrade</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    When V4-Flash&rsquo;s 13B active params aren&rsquo;t enough for deep reasoning tasks, V4-Pro offers 49B active from a 1.6T MoE — the strongest open-source coding model available.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(96,165,250,0.05); border: 1px solid rgba(96,165,250,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #60a5fa; font-weight: 600; margin-bottom: 0.75rem;">V4-Flash (current)</div>
+      <div style="font-size: 0.85em; color: #a1a1aa; line-height: 1.8;">
+        284B total, <strong>13B active</strong><br>
+        4&times; B200 (149GB)<br>
+        190 tok/s + EAGLE<br>
+        LiveCodeBench: 88.8%<br>
+        SWE-bench: 80.8%
+      </div>
+    </div>
+    <div style="background: rgba(192,132,252,0.05); border: 1px solid rgba(192,132,252,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #c084fc; font-weight: 600; margin-bottom: 0.75rem;">V4-Pro (upgrade path)</div>
+      <div style="font-size: 0.85em; color: #a1a1aa; line-height: 1.8;">
+        1.6T total, <strong>49B active</strong><br>
+        8&times; B200 (805GB)<br>
+        ~50-80 tok/s (est.)<br>
+        LiveCodeBench: <strong style="color: #c084fc;">93.5%</strong><br>
+        Codeforces: <strong style="color: #c084fc;">3206</strong> (#1)
+      </div>
+    </div>
+  </div>
+  <p style="margin-top: 0.75rem; color: #71717a; font-size: 0.9em;">
+    <strong>Why slower?</strong> 49B active / 13B active = 3.8&times; more compute per token. Memory bandwidth is the bottleneck &mdash; 98GB must stream from VRAM per token vs 26GB. EAGLE helps both equally (~2.8&times;). Deploy: <code>sbatch serving/download-deepseek-v4-pro.sh</code> then <code>switch-model.sh v4pro</code>.
+  </p>
+</div>
+
+<!-- Model Comparison -->
+<div class="section-block" data-animate>
+  <h3>Full Model Comparison &mdash; Coding Benchmarks</h3>
+  <table style="width: 100%; margin-top: 1rem; font-size: 0.9em;">
+    <thead><tr><th>Benchmark</th><th style="color: #60a5fa;">V4-Flash</th><th style="color: #c084fc;">V4-Pro</th><th style="color: #fbbf24;">GLM-5.1</th><th style="color: #a78bfa;">Qwen3-235B</th></tr></thead>
+    <tbody>
+      <tr><td>Total Params</td><td>284B</td><td style="font-weight:600;">1.6T</td><td>753B</td><td>249B</td></tr>
+      <tr><td>Active Params</td><td>13B</td><td style="font-weight:600;">49B</td><td>40B</td><td>36B</td></tr>
+      <tr><td>GPUs Required</td><td>4&times; B200</td><td>8&times; B200</td><td>8&times; B200</td><td>4&times; B200</td></tr>
+      <tr><td>Context Window</td><td style="color: #60a5fa;">1M</td><td style="color: #c084fc;">1M</td><td>202K</td><td>262K</td></tr>
+      <tr><td>SWE-bench Verified</td><td style="color: #60a5fa; font-weight:600;">80.8%</td><td>80.6%</td><td>&mdash;</td><td>55-58%</td></tr>
+      <tr><td>LiveCodeBench</td><td>88.8%</td><td style="color: #c084fc; font-weight:600;">93.5%</td><td>&mdash;</td><td>72-75%</td></tr>
+      <tr><td>SWE-bench Pro</td><td>57.3%</td><td>55.4%</td><td style="color: #fbbf24; font-weight:600;">58.4%</td><td>&mdash;</td></tr>
+      <tr><td>Terminal-Bench 2.0</td><td>65.4%</td><td>67.9%</td><td>63.5%</td><td>&mdash;</td></tr>
+      <tr><td>CyberGym</td><td>&mdash;</td><td>&mdash;</td><td style="color: #fbbf24; font-weight:600;">68.7%</td><td>&mdash;</td></tr>
+      <tr><td>Codeforces</td><td>&mdash;</td><td style="color: #c084fc; font-weight:600;">3206</td><td>&mdash;</td><td>&mdash;</td></tr>
+      <tr><td>License</td><td>MIT</td><td>MIT</td><td>MIT</td><td>Apache 2.0</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Smart Context Compression + Thinking History Fix (2026-06-02) -->
+<div class="section-block" data-animate style="border-left: 3px solid #10b981; padding-left: 1.5rem;">
+  <h3 style="color: #10b981;">Smart Context Compression &amp; Thinking History Fix (2026-06-02)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Two critical proxy improvements that fix conversation coherence for long Claude Code sessions. Models no longer lose context mid-conversation or get confused by their own thinking history.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">Tiered Compression (replaces FIFO)</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block; line-height: 1.8;">Tier 1: Truncate tool_result (500 chars)
+Tier 2: Strip tool_use, keep text (2K)
+Tier 3: Truncate user messages (1K)
+Tier 4: Drop pairs &rarr; session memory
+
+Last 8 msgs ALWAYS protected.
+Session facts injected into system msg.</code>
+    </div>
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">Thinking History Stripped</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block; line-height: 1.8;">Problem: THINKING_MODE=text prepends
+thinking as text in response. On next
+turn, model re-sees own thinking &rarr;
+confusion + token waste.
+
+Fix: regex strips all thinking blocks
+from assistant msgs before forwarding.
+Model only sees actual responses.</code>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0;">
+    <div style="text-align: center; padding: 1rem; background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #34d399;">4 Tiers</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Progressive Compression</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #34d399;">0ms</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Added Latency (rule-based)</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #34d399;">230K</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Kimi Context Limit (was 185K)</div>
+    </div>
+  </div>
+  <p style="margin-top: 1rem; color: #71717a; font-size: 0.9em;">
+    <strong>Root cause:</strong> Kimi was saying "this appears to be a fresh conversation turn" because naive FIFO trimming dropped early context (decisions, file reads) while keeping recent verbose tool results. Session memory harness now preserves key facts (user requests, files touched) across compression events, injected as <code>&lt;session-context&gt;</code> in system message.
+  </p>
+</div>
+
+<!-- Context Overflow Protection (2026-05-19) -->
+<div class="section-block" data-animate style="border-left: 3px solid #f97316; padding-left: 1.5rem;">
+  <h3 style="color: #f97316;">Context Overflow Protection &mdash; No More 400 Errors (2026-05-19)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Claude Code assumes 200K context and auto-compresses at ~170K. When proxying to HPC models, <code>max_completion_tokens</code> could push past backend limits, causing hard 400 crashes. Three-layer fix deployed across all models.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #f97316; font-weight: 600; margin-bottom: 0.5rem;">Layer 1: Cap Both Keys</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block;">for key in ("max_tokens",
+             "max_completion_tokens"):
+  if req.get(key, 0) > optimal_max:
+    req[key] = optimal_max</code>
+    </div>
+    <div style="background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #f97316; font-weight: 600; margin-bottom: 0.5rem;">Layer 2: Input Trimming</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block;">BACKEND_CONTEXT_LIMIT
+  estimate tokens (chars/4)
+  if input > budget:
+    trim oldest messages
+    keep system + last 2</code>
+    </div>
+    <div style="background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #f97316; font-weight: 600; margin-bottom: 0.5rem;">Layer 3: Server Context</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block;">V4-Flash:  1,048,576 (1M)
+GLM-5.1:   202,752
+Kimi K2.6: 196,608
+Gemma-4:     8,192</code>
+    </div>
+  </div>
+  <table style="width: 100%; margin-top: 1rem; font-size: 0.9em;">
+    <thead><tr><th>Model</th><th>Server Context</th><th>Proxy Limit</th><th>Risk Level</th></tr></thead>
+    <tbody>
+      <tr><td>V4-Flash</td><td style="color: #60a5fa; font-weight: 600;">1M</td><td>1,000,000</td><td style="color: #34d399;">None (CC compresses at 170K)</td></tr>
+      <tr><td>GLM-5.1</td><td>202,752</td><td>202,752</td><td style="color: #fbbf24;">Low (proxy trims edge cases)</td></tr>
+      <tr><td>Kimi K2.6</td><td>196,608</td><td>196,608</td><td style="color: #fbbf24;">Low (proxy trims edge cases)</td></tr>
+      <tr><td>Gemma-4</td><td>8,192</td><td>8,192</td><td style="color: #ef4444;">Aggressive trimming (8K is tiny)</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 1rem; color: #71717a; font-size: 0.9em;">
+    <strong>Also this session:</strong> <code>proxy-ai stop &lt;model&gt;</code> added &mdash; kill individual model tunnel+proxy without disrupting others. Kimi K2.6 now actively serving (job loaded in ~20 min).
+  </p>
+</div>
+
+<!-- Kimi K2.6 Live (2026-05-19) -->
+<div class="section-block" data-animate>
+  <h3 style="color: #f97316;">Kimi K2.6 NVFP4 &mdash; Now Serving (2026-05-19)</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Kimi K2.6 NVFP4 (1T MoE, 32B active) successfully deployed. Full client stack operational: <code>claude-kimi</code>, <code>proxy-ai kimi</code>, Zed IDE at <code>localhost:8104/v1</code>.
+  </p>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1rem 0;">
+    <div style="text-align: center; padding: 1rem; background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #fb923c;">1T</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Total Params</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #fb923c;">32B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Active / Token</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #fb923c;">4&times; B200</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Hardware (vLLM pip)</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(249,115,22,0.05); border: 1px solid rgba(249,115,22,0.2); border-radius: 10px;">
+      <div style="font-size: 1.25rem; font-weight: 700; color: #fb923c;">#7</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Arena ELO 1522</div>
+    </div>
+  </div>
+  <div style="padding: 1rem 1.25rem; background: linear-gradient(135deg, rgba(249,115,22,0.06) 0%, #18181b 100%); border-radius: 10px; border: 1px solid rgba(249,115,22,0.15); margin-top: 1rem;">
+    <div style="font-size: 11px; color: #f97316; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">DEPLOYMENT NOTES</div>
+    <div style="font-size: 0.85em; color: #a1a1aa; line-height: 1.8;">
+      vLLM pip (container failed &mdash; flashinfer cubin symlinks exhausted tmpfs) &middot; Separate <code>vllm-venv</code> &middot; MLA attention (kv_lora_rank=512) &rarr; tiny KV cache &middot; 196K context &middot; <code>--tool-call-parser kimi_k2 --reasoning-parser kimi_k2</code> &middot; Thinking ON by default
+    </div>
+  </div>
+</div>
+
+<!-- GLM-5.1 Tool Calling & Thinking Fix (2026-05-18) -->
+<div class="section-block" data-animate style="border-left: 3px solid #a78bfa; padding-left: 1.5rem;">
+  <h3 style="color: #a78bfa;">GLM-5.1: Tool Calling &amp; Per-Request Thinking Control</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    GLM-5.1 generates tool calls as custom XML and wraps all responses in <code>&lt;think&gt;...&lt;/think&gt;</code> tags by default. Both leaked raw into Claude Code and Zed until properly configured.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.5rem;">Problems (3 issues)</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block; line-height: 1.8;">1. Tool calls as raw XML in content:
+   &lt;tool_call&gt;get_weather
+   &lt;arg_key&gt;city&lt;/arg_key&gt;
+   &lt;arg_value&gt;Munich&lt;/arg_value&gt;
+   &lt;/tool_call&gt;
+
+2. &lt;think&gt; tags leaking into responses
+
+3. No per-request thinking control</code>
+    </div>
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">Solution (SGLang parsers + proxy)</div>
+      <code style="color: #a1a1aa; font-size: 0.8em; white-space: pre-wrap; display: block; line-height: 1.8;">--tool-call-parser glm47
+  &rarr; XML &rarr; structured tool_calls[]
+
+--reasoning-parser glm45
+  &rarr; &lt;think&gt; &rarr; reasoning_content field
+
+reasoning_effort: "none" | "high"
+  &rarr; per-request thinking toggle</code>
+    </div>
+  </div>
+  <div style="margin: 1rem 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;">
+    <div style="text-align: center; padding: 1rem; background: rgba(167,139,246,0.06); border: 1px solid rgba(167,139,246,0.2); border-radius: 10px;">
+      <div style="font-size: 1.5rem; font-weight: 700; color: #a78bfa;">glm47</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Tool Parser (5.x XML format)</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(167,139,246,0.06); border: 1px solid rgba(167,139,246,0.2); border-radius: 10px;">
+      <div style="font-size: 1.5rem; font-weight: 700; color: #a78bfa;">glm45</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Reasoning Parser (&lt;think&gt; tags)</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: rgba(167,139,246,0.06); border: 1px solid rgba(167,139,246,0.2); border-radius: 10px;">
+      <div style="font-size: 1.5rem; font-weight: 700; color: #a78bfa;">/effort</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Claude Code slider &rarr; SGLang</div>
+    </div>
+  </div>
+  <p style="margin-top: 1rem; color: #71717a; font-size: 0.9em;">
+    <strong>Key insight:</strong> <code>glm45</code> vs <code>glm47</code> tool parsers detect different XML layouts. GLM-4.5/4.6 uses newlines between <code>&lt;arg_key&gt;</code> tags; GLM-5.x uses inline. Both share the same <code>&lt;think&gt;</code> wrapper, so reasoning parser is <code>glm45</code> for both. Parsers are output post-processors only &mdash; zero quality impact.
+  </p>
+  <p style="margin-top: 0.75rem; color: #c084fc; font-size: 0.9em; font-weight: 500;">
+    &#x1F3AF; Thinking control: Claude Code's <code>/effort</code> slider maps to SGLang's <code>reasoning_effort</code> via proxy. Zed gets thinking ON by default (GLM's native behavior) with clean separation via <code>reasoning_content</code> field.
+  </p>
+</div>
+
+<!-- Proxy Thinking Mapping -->
+<div class="section-block" data-animate>
+  <h3>Proxy: Anthropic Thinking &harr; SGLang reasoning_effort</h3>
+  <div style="background: rgba(192,132,252,0.05); border: 1px solid rgba(192,132,252,0.2); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; line-height: 2;">
+    <span style="color: #71717a;">// Claude Code /effort slider</span><br>
+    <span style="color: #60a5fa;">thinking.enabled = true</span> &nbsp;<span style="color: #71717a;">&rarr;</span>&nbsp; <span style="color: #34d399;">reasoning_effort: "high"</span> &nbsp;<span style="color: #71717a;">&rarr;</span>&nbsp; <span style="color: #fbbf24;">GLM thinks, answer in content</span><br>
+    <span style="color: #60a5fa;">thinking.enabled = false</span> <span style="color: #71717a;">&rarr;</span>&nbsp; <span style="color: #34d399;">reasoning_effort: "none"</span> &nbsp;<span style="color: #71717a;">&rarr;</span>&nbsp; <span style="color: #fbbf24;">No thinking, fast response</span><br><br>
+    <span style="color: #71717a;">// Zed (direct to SGLang, no proxy)</span><br>
+    <span style="color: #a78bfa;">Default: thinking ON</span> &nbsp;<span style="color: #71717a;">&rarr;</span>&nbsp; <span style="color: #34d399;">reasoning_content: "..."</span> (separate field, not in content)
+  </div>
+</div>
+
+<!-- HPC Cleanup -->
+<div class="section-block" data-animate>
+  <h3>HPC Repo Reorganization</h3>
+  <p style="margin: 1rem 0; color: #a1a1aa;">
+    Cleaned ~200GB of obsolete files. Removed deprecated Qwen3.6 models, old serving scripts, source repos, and empty directories.
+  </p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+    <div style="background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.15); border-radius: 10px; padding: 1rem;">
+      <div style="color: #ef4444; font-weight: 600; margin-bottom: 0.5rem;">Removed</div>
+      <ul style="color: #a1a1aa; font-size: 0.85em; list-style: none; padding: 0;">
+        <li>&#10005; qwen3.6-35b-a3b (67GB) &mdash; 15% win rate</li>
+        <li>&#10005; qwen3.6-35b-a3b-fp8 (67GB)</li>
+        <li>&#10005; qwen3.6-35b-a3b-mmm (67GB)</li>
+        <li>&#10005; gemma-4-31b-mmm (58GB) &mdash; old SFT+DPO</li>
+        <li>&#10005; flash-mla-src/ (3GB)</li>
+        <li>&#10005; sglang-dsv4/ (2GB)</li>
+        <li>&#10005; 15+ obsolete scripts</li>
+      </ul>
+    </div>
+    <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); border-radius: 10px; padding: 1rem;">
+      <div style="color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">Kept (production)</div>
+      <ul style="color: #a1a1aa; font-size: 0.85em; list-style: none; padding: 0;">
+        <li>&#10003; deepseek-v4-flash (149GB) &mdash; coding</li>
+        <li>&#10003; glm-5.1-fp8 (756GB, scratch) &mdash; alt coding</li>
+        <li>&#10003; gemma-4-31b-mmm-sft (58GB) &mdash; MMM</li>
+        <li>&#10003; gemma-4-31b-it (59GB) &mdash; base</li>
+        <li>&#10003; qwen3-asr/tts (9GB) &mdash; voice</li>
+        <li>&#10003; sglang container (20GB)</li>
+        <li><s style="opacity: 0.5;">&#10005; qwen3-235b-a22b (438GB) &mdash; deleted (0%)</s></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ==================== V4-FLASH TAB ==================== -->
+<div id="tab-v4flash" class="tab-content">
+
+<!-- V4-Flash Hero -->
+<div class="section-title">DeepSeek-V4-Flash Deployment &middot; May 11, 2026</div>
+<div class="card" style="border-color: rgba(96, 165, 250, 0.2);">
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 1.5rem;">
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #60a5fa;">190</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">tok/s</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #34d399;">282B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">total params (FP4 MoE)</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #f59e0b;">12B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">active per token</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #a78bfa;">69%</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">win rate vs Sonnet</div>
+    </div>
+  </div>
+
+  <div style="padding: 14px 18px; background: linear-gradient(135deg, #172554 0%, #18181b 100%); border-radius: 10px; border: 1px solid #1e40af; margin-bottom: 1rem;">
+    <div style="font-size: 11px; color: #60a5fa; margin-bottom: 6px;">BREAKTHROUGH</div>
+    <div style="font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+      MLA attention kernel deadlocks on B200/SM100 with pip-installed <code>flash_mla</code>. Solved via official Docker image <code>lmsysorg/sglang:deepseek-v4-blackwell</code> converted to Apptainer SIF. Combined with EAGLE speculative decoding (2.8&times; speedup) and CUDA graphs (306 graphs, 51 batch sizes) for <strong style="color: #60a5fa;">190 tok/s</strong> &mdash; up from 8.9 tok/s unoptimized.
+    </div>
+  </div>
+</div>
+
+<!-- V4-Flash vs Sonnet Benchmark -->
+<div class="section-title">Coding Benchmark: V4-Flash vs Sonnet 4.6 (judged by Opus 4.6)</div>
+<div class="card">
+  <p style="color: #a1a1aa; margin-bottom: 1.5rem; font-size: 13px;">
+    8 coding tasks (algorithms, debugging, architecture, refactoring, Rust, ML, parsing, concurrency). Blind evaluation with position-randomized responses.
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 1.5rem;">
+    <!-- V4-Flash -->
+    <div style="background: #18181b; border-radius: 12px; padding: 20px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">DEEPSEEK V4-FLASH (12B ACTIVE)</div>
+      <div style="font-size: 36px; font-weight: 700; color: #60a5fa;">69%<span style="font-size: 14px; color: #52525b;"> win rate</span></div>
+      <div style="font-size: 14px; color: #60a5fa; margin-top: 4px;">5 wins, 1 tie</div>
+      <table style="margin-top: 12px; font-size: 12px; width: 100%;">
+        <tr><td style="color: #71717a; padding: 2px 0;">Avg throughput</td><td class="mono" style="text-align:right;">207 tok/s</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Avg latency</td><td class="mono" style="text-align:right;">7.8s</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Output tokens</td><td class="mono" style="text-align:right;">1,659 avg</td></tr>
+      </table>
+    </div>
+    <!-- Sonnet -->
+    <div style="background: #18181b; border-radius: 12px; padding: 20px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">CLAUDE SONNET 4.6 (BEDROCK API)</div>
+      <div style="font-size: 36px; font-weight: 700; color: #818cf8;">31%<span style="font-size: 14px; color: #52525b;"> win rate</span></div>
+      <div style="font-size: 14px; color: #818cf8; margin-top: 4px;">2 wins, 1 tie</div>
+      <table style="margin-top: 12px; font-size: 12px; width: 100%;">
+        <tr><td style="color: #71717a; padding: 2px 0;">Avg throughput</td><td class="mono" style="text-align:right;">72 tok/s</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Avg latency</td><td class="mono" style="text-align:right;">26.4s</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Output tokens</td><td class="mono" style="text-align:right;">1,882 avg</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Task results -->
+  <div style="margin-bottom: 1.5rem;">
+    <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">TASK BREAKDOWN</div>
+    <div style="display: grid; gap: 6px; font-size: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">LRU Cache</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4-Flash &bull; 229 tok/s</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Race condition</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4-Flash &bull; 177 tok/s</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">System design</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet &bull; deeper reasoning</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">SQL refactoring</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4-Flash &bull; 179 tok/s</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Rust ownership</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 50%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4</div>
+          <div style="width: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">ML pipeline</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4-Flash &bull; 226 tok/s</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Cron parser</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 10px;">V4-Flash &bull; 205 tok/s</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Async scraper</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet &bull; better architecture</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 14px 18px; background: linear-gradient(135deg, #172554 0%, #18181b 100%); border-radius: 10px; border: 1px solid #1e40af;">
+    <div style="font-size: 11px; color: #60a5fa; margin-bottom: 6px;">KEY INSIGHT</div>
+    <div style="font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+      V4-Flash's 282B expert knowledge base + 12B active compute delivers <strong style="color: #60a5fa;">Sonnet-tier quality at 2.9&times; the speed</strong>. Sonnet edges ahead on complex architectural reasoning (system design, async patterns), but V4-Flash wins on concrete implementation tasks. For agent swarms needing many concurrent sessions, V4-Flash is the clear winner.
+    </div>
+  </div>
+</div>
+
+<!-- EAGLE Speculation -->
+<div class="section-title">EAGLE Speculative Decoding</div>
+<div class="card">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div>
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 10px;">HOW IT WORKS</div>
+      <div style="font-size: 12px; color: #a1a1aa; line-height: 1.9;">
+        &#9679; Model has built-in <strong style="color: #f59e0b;">Multi-Token Prediction heads</strong><br>
+        &#9679; Each forward pass drafts 4 tokens speculatively<br>
+        &#9679; 3 speculation steps with top-k=1 selection<br>
+        &#9679; Verification pass accepts/rejects drafts<br>
+        &#9679; ~70% acceptance rate &rarr; 2.8&times; effective speedup<br>
+        &#9679; <strong style="color: #34d399;">Zero quality loss</strong> (rejected drafts are discarded)
+      </div>
+    </div>
+    <div>
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 10px;">OPTIMIZATION JOURNEY</div>
+      <table style="font-size: 12px; width: 100%;">
+        <tr style="color: #71717a;"><td style="padding: 3px 0;">Unoptimized (no CUDA graphs)</td><td class="mono" style="text-align:right; color: #ef4444;">8.9 tok/s</td></tr>
+        <tr style="color: #71717a;"><td style="padding: 3px 0;">+ CUDA graphs (306 captured)</td><td class="mono" style="text-align:right; color: #f59e0b;">~70 tok/s</td></tr>
+        <tr style="color: #71717a;"><td style="padding: 3px 0;">+ EAGLE 3-step speculation</td><td class="mono" style="text-align:right; color: #34d399;">190 tok/s</td></tr>
+        <tr><td colspan="2" style="padding-top: 8px; border-top: 1px solid #27272a;"></td></tr>
+        <tr style="color: #a1a1aa;"><td style="padding: 3px 0;"><strong>Total speedup</strong></td><td class="mono" style="text-align:right; color: #60a5fa;"><strong>21&times;</strong></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Deployment Timeline -->
+<div class="section-title">Deployment Timeline (6 Jobs)</div>
+<div class="card">
+  <table style="font-size: 12px; width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr style="color: #71717a; border-bottom: 1px solid #27272a;">
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Job</th>
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Issue</th>
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Resolution</th>
+        <th style="text-align: center; padding: 6px 0; font-weight: 500;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid #1a1a1a;">
+        <td class="mono" style="padding: 6px 0; color: #a1a1aa;">1880802</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">Container pull: 30m wall timeout</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">Increased to <code>--time=02:00:00</code></td>
+        <td style="text-align: center;"><span style="color: #ef4444;">&#10005;</span></td>
+      </tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;">
+        <td class="mono" style="padding: 6px 0; color: #a1a1aa;">1881750</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">ModuleNotFoundError: sglang</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">Bind mount <code>/data</code> not <code>/workspace</code></td>
+        <td style="text-align: center;"><span style="color: #ef4444;">&#10005;</span></td>
+      </tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;">
+        <td class="mono" style="padding: 6px 0; color: #a1a1aa;">1881831</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">FileNotFoundError: gcc</td>
+        <td style="padding: 6px 0; color: #a1a1aa;"><code>--cleanenv</code> + explicit PATH</td>
+        <td style="text-align: center;"><span style="color: #ef4444;">&#10005;</span></td>
+      </tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;">
+        <td class="mono" style="padding: 6px 0; color: #a1a1aa;">1881888</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">OSError: Read-only file system</td>
+        <td style="padding: 6px 0; color: #a1a1aa;"><code>--writable-tmpfs</code></td>
+        <td style="text-align: center;"><span style="color: #ef4444;">&#10005;</span></td>
+      </tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;">
+        <td class="mono" style="padding: 6px 0; color: #a1a1aa;">1882010</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">8.9 tok/s (no optimization)</td>
+        <td style="padding: 6px 0; color: #a1a1aa;">Removed <code>--disable-cuda-graph</code>, added EAGLE</td>
+        <td style="text-align: center;"><span style="color: #f59e0b;">&#9679;</span></td>
+      </tr>
+      <tr>
+        <td class="mono" style="padding: 6px 0; color: #34d399; font-weight: 600;">1882695</td>
+        <td style="padding: 6px 0; color: #34d399;">Production (190 tok/s)</td>
+        <td style="padding: 6px 0; color: #34d399;">Full recipe: CUDA graphs + EAGLE + MoE</td>
+        <td style="text-align: center;"><span style="color: #34d399;">&#10003;</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Multi-Model Architecture -->
+<div class="section-title">Multi-Model Serving Architecture</div>
+<div class="card">
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 1.5rem;">
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #1e40af;">
+      <div style="font-size: 10px; color: #60a5fa; margin-bottom: 6px;">PORT 8100 &bull; CODING AGENTS</div>
+      <div style="font-size: 14px; font-weight: 600; color: #fafafa;">DeepSeek-V4-Flash</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">4&times; B200 &bull; Container &bull; 190 tok/s</div>
+    </div>
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #065f46;">
+      <div style="font-size: 10px; color: #34d399; margin-bottom: 6px;">PORT 8200 &bull; MMM DOMAIN</div>
+      <div style="font-size: 14px; font-weight: 600; color: #fafafa;">Gemma-4-31B-MMM</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">2&times; L40S &bull; Native &bull; 23 tok/s</div>
+    </div>
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #27272a;">
+      <div style="font-size: 10px; color: #71717a; margin-bottom: 6px;">BACKUP &bull; PORT 8100</div>
+      <div style="font-size: 14px; font-weight: 600; color: #a1a1aa;">Qwen3-235B-A22B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">4&times; B200 &bull; SGLang FP8 &bull; 65 tok/s</div>
+    </div>
+  </div>
+
+  <div style="padding: 12px 16px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+    <div style="font-size: 11px; color: #71717a; margin-bottom: 6px;">CONNECT</div>
+    <code style="font-size: 12px; color: #93c5fd;">ssh -L 8100:fat-node-006:8100 -L 8200:cpu-node-004:8200 -N user@hpc-cluster.example.com</code>
+  </div>
+
+  <div style="margin-top: 1rem; padding: 12px 16px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+    <div style="font-size: 11px; color: #71717a; margin-bottom: 6px;">RESOURCE UTILIZATION</div>
+    <div style="font-size: 12px; color: #a1a1aa; line-height: 1.8;">
+      &#9679; Cluster: 64 B200 + 176 L40S &rarr; Used: <strong style="color: #60a5fa;">4 B200 + 2 L40S</strong> (93% idle)<br>
+      &#9679; V4-Flash: 147GB model / 768GB total VRAM (4&times;192GB) = 19% model, rest for KV cache<br>
+      &#9679; Gemma: 62GB model / 96GB total VRAM (2&times;48GB) = 65% model, headroom for context
+    </div>
+  </div>
+</div>
+
+<!-- Throughput Comparison -->
+<div class="section-title">Throughput Comparison (All Models)</div>
+<div class="card">
+  <div style="display: grid; gap: 8px; font-size: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 150px; color: #a1a1aa;">V4-Flash (12B active)</span>
+      <div style="flex: 1; height: 22px; background: #27272a; border-radius: 4px; overflow: hidden;">
+        <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #1d4ed8, #60a5fa); display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: #fff; font-weight: 500;">207 tok/s</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 150px; color: #a1a1aa;">Sonnet 4.6 (Bedrock)</span>
+      <div style="flex: 1; height: 22px; background: #27272a; border-radius: 4px; overflow: hidden;">
+        <div style="width: 35%; height: 100%; background: linear-gradient(90deg, #4338ca, #818cf8); display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: #fff; font-weight: 500;">72 tok/s</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 150px; color: #a1a1aa;">Qwen3-235B (36B active)</span>
+      <div style="flex: 1; height: 22px; background: #27272a; border-radius: 4px; overflow: hidden;">
+        <div style="width: 31%; height: 100%; background: linear-gradient(90deg, #92400e, #f59e0b); display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: #fff; font-weight: 500;">~65 tok/s</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 150px; color: #a1a1aa;">Gemma-4 (31B dense)</span>
+      <div style="flex: 1; height: 22px; background: #27272a; border-radius: 4px; overflow: hidden;">
+        <div style="width: 11%; height: 100%; background: linear-gradient(90deg, #065f46, #34d399); display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: #fff; font-weight: 500;">23 tok/s</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Apptainer Flags -->
+<div class="section-title">Critical Apptainer Flags (Each Learned the Hard Way)</div>
+<div class="card">
+  <table style="font-size: 12px; width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr style="color: #71717a; border-bottom: 1px solid #27272a;">
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Flag</th>
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Why Needed</th>
+        <th style="text-align: left; padding: 6px 0; font-weight: 500;">Without It</th>
+      </tr>
+    </thead>
+    <tbody style="color: #a1a1aa;">
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td class="mono" style="padding: 5px 0; color: #60a5fa;">--nv</td><td style="padding: 5px 8px;">Expose GPUs to container</td><td style="padding: 5px 0;">No CUDA devices visible</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td class="mono" style="padding: 5px 0; color: #60a5fa;">--cleanenv</td><td style="padding: 5px 8px;">Prevent host PATH leak</td><td style="padding: 5px 0;">Triton tries nonexistent host GCC</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td class="mono" style="padding: 5px 0; color: #60a5fa;">--writable-tmpfs</td><td style="padding: 5px 8px;">Allow runtime writes</td><td style="padding: 5px 0;">FlashInfer can't write cubin symlinks</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td class="mono" style="padding: 5px 0; color: #60a5fa;">--env PATH=...</td><td style="padding: 5px 8px;">Container-internal PATH</td><td style="padding: 5px 0;">Picks up broken host paths</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td class="mono" style="padding: 5px 0; color: #60a5fa;">--env HOME=/tmp</td><td style="padding: 5px 8px;">DeepGEMM JIT needs HOME</td><td style="padding: 5px 0;">Permission denied on read-only /</td></tr>
+      <tr><td class="mono" style="padding: 5px 0; color: #60a5fa;">--bind .../data</td><td style="padding: 5px 8px;">Mount weights (NOT /workspace)</td><td style="padding: 5px 0;">Overwrites container's sglang package</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Zed Direct Integration -->
+<div class="section-title">IDE Integration: Zed Direct to HPC &middot; May 17, 2026</div>
+<div class="card">
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 1.5rem;">
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #1e40af;">
+      <div style="font-size: 10px; color: #60a5fa; margin-bottom: 6px;">PORT 8100</div>
+      <div style="font-size: 14px; font-weight: 600; color: #fafafa;">DeepSeek V4-Flash</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">1M context &bull; 190 tok/s</div>
+    </div>
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #7c3aed;">
+      <div style="font-size: 10px; color: #a78bfa; margin-bottom: 6px;">PORT 8103</div>
+      <div style="font-size: 14px; font-weight: 600; color: #fafafa;">GLM-5.1</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">200K context &bull; 167 tok/s</div>
+    </div>
+    <div style="background: #18181b; border-radius: 10px; padding: 16px; border: 1px solid #065f46;">
+      <div style="font-size: 10px; color: #34d399; margin-bottom: 6px;">PORT 8200</div>
+      <div style="font-size: 14px; font-weight: 600; color: #fafafa;">Gemma-4 MMM</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">8K context &bull; 23 tok/s</div>
+    </div>
+  </div>
+
+  <div style="padding: 14px 18px; background: linear-gradient(135deg, #172554 0%, #18181b 100%); border-radius: 10px; border: 1px solid #1e40af;">
+    <div style="font-size: 11px; color: #60a5fa; margin-bottom: 6px;">HOW IT WORKS</div>
+    <div style="font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+      Zed connects directly to SGLang's OpenAI-compat endpoint at <code>localhost:PORT/v1</code>. No proxy needed (unlike Claude Code which requires Anthropic&rarr;OpenAI translation). API key entered via Zed's credential store UI (any dummy value works &mdash; SGLang doesn't validate).
+    </div>
+  </div>
+</div>
+
+<!-- OOM Fix -->
+<div class="section-title">EAGLE OOM Fix: mem-fraction-static &middot; May 17, 2026</div>
+<div class="card">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div>
+      <div style="font-size: 11px; color: #ef4444; margin-bottom: 10px;">BEFORE (CRASHED)</div>
+      <div style="font-size: 12px; color: #a1a1aa; line-height: 1.9;">
+        &#9679; <code>--mem-fraction-static</code> = auto (~0.95)<br>
+        &#9679; GPU: 177GB used / 178GB total<br>
+        &#9679; Free: <strong style="color: #ef4444;">~2GB</strong><br>
+        &#9679; EAGLE needs 2GB temp tensor &rarr; <strong style="color: #ef4444;">OOM</strong>
+      </div>
+    </div>
+    <div>
+      <div style="font-size: 11px; color: #34d399; margin-bottom: 10px;">AFTER (STABLE)</div>
+      <div style="font-size: 12px; color: #a1a1aa; line-height: 1.9;">
+        &#9679; <code>--mem-fraction-static 0.85</code><br>
+        &#9679; GPU: ~155GB used / 178GB total<br>
+        &#9679; Free: <strong style="color: #34d399;">~28GB</strong><br>
+        &#9679; EAGLE speculation runs smoothly<br>
+        &#9679; QoS: 1d &rarr; 3d (no overnight expiry)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GLM-5.1 Deployment -->
+<div class="section-title">GLM-5.1: Deployed &middot; 167 tok/s on 8&times; B200 &middot; May 17, 2026</div>
+<div class="card" style="border-color: rgba(167, 139, 250, 0.25);">
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 1.5rem;">
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #a78bfa;">754B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">total params (MoE)</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #f59e0b;">40B</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">active per token</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #34d399;">167</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">tok/s (EAGLE)</div>
+    </div>
+    <div style="text-align: center; padding: 16px; background: #18181b; border-radius: 10px;">
+      <div style="font-size: 32px; font-weight: 700; color: #60a5fa;">8</div>
+      <div style="font-size: 11px; color: #71717a; margin-top: 4px;">&times; B200 (TP=8)</div>
+    </div>
+  </div>
+
+  <!-- Deployment timeline -->
+  <div style="font-size: 11px; color: #71717a; margin-bottom: 10px;">DEPLOYMENT JOURNEY (6 ATTEMPTS)</div>
+  <div style="display: grid; gap: 6px; font-size: 12px; margin-bottom: 1.5rem;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917332</span>
+      <div style="flex: 1; height: 22px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #f87171;">CUDA module load order &rarr; add <code style="font-size: 10px;">hpc-cluster/2509-fat</code></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917333</span>
+      <div style="flex: 1; height: 22px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #f87171;">libnvrtc.so.13 missing &rarr; LD_LIBRARY_PATH fix</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917334</span>
+      <div style="flex: 1; height: 22px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #f87171;">Container: TokenizersBackend unknown &rarr; abandoned, use pip</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917335</span>
+      <div style="flex: 1; height: 22px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #f87171;">TP=5: 64 heads % 5 &ne; 0 &rarr; TP must divide num_heads</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917336</span>
+      <div style="flex: 1; height: 22px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #fbbf24;">TP=4: OOM (189GB &gt; 178GB usable) &rarr; B200 has only ~178GB free</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="width: 70px; font-family: 'JetBrains Mono', monospace; color: #52525b; font-size: 11px;">1917337</span>
+      <div style="flex: 1; height: 22px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: #34d399; font-weight: 500;">TP=8: 94.5 GB/GPU &check; &mdash; 167 tok/s after 15min DeepGEMM JIT</div>
+    </div>
+  </div>
+
+  <!-- Key learnings -->
+  <div style="padding: 14px 18px; background: linear-gradient(135deg, #1e1b4b 0%, #18181b 100%); border-radius: 10px; border: 1px solid #4c1d95; margin-bottom: 1rem;">
+    <div style="font-size: 11px; color: #a78bfa; margin-bottom: 8px;">KEY LEARNINGS</div>
+    <div style="font-size: 13px; color: #e2e8f0; line-height: 1.8;">
+      &bull; <strong>TP constraint</strong>: Must divide num_attention_heads (64). TP=5 impossible.<br>
+      &bull; <strong>B200 memory</strong>: 192GB &minus; 14GB driver/ECC = 178GB usable. 756/4=189 &gt; 178 &rarr; OOM.<br>
+      &bull; <strong>Container incompatible</strong>: Older transformers in Docker doesn't know <code>TokenizersBackend</code> tokenizer.<br>
+      &bull; <strong>DeepGEMM JIT</strong>: 15 min first boot (16K kernel variants). Cached after.<br>
+      &bull; <strong>libnvrtc.so.13</strong>: Required by <code>sgl_kernel</code> on SM100. Lives in <code>nvidia/cu13/lib</code> in pip venv.
+    </div>
+  </div>
+
+  <!-- Comparison table -->
+  <table style="font-size: 12px; width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr style="color: #71717a; border-bottom: 1px solid #27272a;">
+        <th style="text-align: left; padding: 6px 0;">Feature</th>
+        <th style="text-align: left; padding: 6px 0;">V4-Flash</th>
+        <th style="text-align: left; padding: 6px 0;">GLM-5.1</th>
+      </tr>
+    </thead>
+    <tbody style="color: #a1a1aa;">
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td style="padding: 5px 0;">Active params</td><td style="padding: 5px 0;">12B</td><td style="padding: 5px 0; color: #a78bfa;">40B</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td style="padding: 5px 0;">KV cache</td><td style="padding: 5px 0;">MLA (1 head)</td><td style="padding: 5px 0;">DSA (kv_lora=512)</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td style="padding: 5px 0;">Context</td><td style="padding: 5px 0;">1M</td><td style="padding: 5px 0;">200K</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td style="padding: 5px 0;">GPUs</td><td style="padding: 5px 0;">4&times; B200</td><td style="padding: 5px 0;">8&times; B200</td></tr>
+      <tr style="border-bottom: 1px solid #1a1a1a;"><td style="padding: 5px 0;">EAGLE</td><td style="padding: 5px 0;">&check; (MTP)</td><td style="padding: 5px 0; color: #34d399;">&check; (native MTP)</td></tr>
+      <tr><td style="padding: 5px 0;">Throughput</td><td style="padding: 5px 0; color: #60a5fa;">190 tok/s</td><td style="padding: 5px 0; color: #a78bfa; font-weight: 600;">167 tok/s</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Footer (V4-Flash tab) -->
+<div class="footer">
+  Updated 2026-05-17 &middot; V4-Flash: Container + EAGLE (4&times; B200) &middot; GLM-5.1: pip + EAGLE (8&times; B200)<br>
+  <span style="color: #27272a;">DeepSeek-V4-Flash 282B MoE &middot; GLM-5.1 754B MoE &middot; EAGLE speculation &middot; Air-gapped serving</span>
+</div>
+
+</div>
+<!-- ==================== END V4-FLASH TAB ==================== -->
+
+<!-- ==================== GEMMA-4 TAB ==================== -->
+<div id="tab-gemma" class="tab-content">
+
+<!-- Gemma Key Metrics -->
+<div class="section-title">Gemma-4-31B-IT &rarr; MMM Agent &middot; May 7, 2026</div>
+<div class="metrics-grid">
+  <div class="metric-card">
+    <div class="label">Win Rate vs Sonnet</div>
+    <div class="value" style="color: #34d399;">59%</div>
+    <div class="detail">16 wins &middot; 7 losses &middot; 4 ties</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">Active Params</div>
+    <div class="value">31B</div>
+    <div class="detail">Dense &middot; ALL active per token</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">Training Data</div>
+    <div class="value">135</div>
+    <div class="detail">Opus-4.6-authored examples</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">GRPO Steps</div>
+    <div class="value">135</div>
+    <div class="detail">4 gens/prompt &middot; 6 reward fns</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">Training Time</div>
+    <div class="value">3h 22m</div>
+    <div class="detail">SFT: ~5m &middot; GRPO: 3h17m</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">VRAM Peak</div>
+    <div class="value">149 GB</div>
+    <div class="detail">68.5 alloc / 192 available</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Eval Results -->
+<div class="section-title">Evaluation: Gemma-4 MMM vs Sonnet 4.6 (judged by Opus 4.6)</div>
+<div class="two-col" style="margin-bottom: 2rem;">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Dimension Scores (average /10)</h2>
+    </div>
+    <div class="section-card-body">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 8px 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;">Accuracy</span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex; position: relative;">
+            <div style="width: 70%; background: #818cf8; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600;">S 7.0</div>
+            <div style="width: 79%; background: #34d399; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600; color: #000; position: absolute; left: 0; opacity: 0.8; clip-path: inset(0 21% 0 0);">G 7.9</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;">Completeness</span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 80%; background: #818cf8; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600;">S 8.0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;"></span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 83%; background: #34d399; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600; color: #000;">G 8.3</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;">Evidence</span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 62%; background: #818cf8; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600;">S 6.2</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;"></span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 70%; background: #34d399; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600; color: #000;">G 7.0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;">Domain Expertise</span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 73%; background: #818cf8; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600;">S 7.3</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 120px; color: #a1a1aa; font-size: 13px;"></span>
+          <div style="flex: 1; height: 24px; background: #27272a; border-radius: 6px; overflow: hidden; display: flex;">
+            <div style="width: 82%; background: #34d399; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 600; color: #000;">G 8.2</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Category Breakdown (27 tests)</h2>
+    </div>
+    <div class="section-card-body">
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 4px 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">channel_attrib</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 100%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G 2-0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">debugging</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 100%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G 2-0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">general_mmm</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 100%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G 3-0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">tech_constraints</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 100%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G 2-0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">production</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 100%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G 1-0</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">methodology</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 50%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G</div>
+            <div style="width: 50%; background: #52525b; display: flex; align-items: center; justify-content: center; font-size: 10px;">T</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">diagnostics</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 33%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G</div>
+            <div style="width: 33%; background: #52525b; display: flex; align-items: center; justify-content: center; font-size: 10px;">T</div>
+            <div style="width: 34%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">optimization</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 33%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G</div>
+            <div style="width: 33%; background: #52525b; display: flex; align-items: center; justify-content: center; font-size: 10px;">T</div>
+            <div style="width: 34%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">config_gen</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 33%; background: #34d399; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">G</div>
+            <div style="width: 67%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S 2</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 140px; color: #a1a1aa; font-size: 12px;">scenario_plan</span>
+          <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+            <div style="width: 50%; background: #52525b; display: flex; align-items: center; justify-content: center; font-size: 10px;">T</div>
+            <div style="width: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Gemma vs Qwen Comparison -->
+<div class="section-title">Improvement Over Qwen Baseline</div>
+<div class="section-card" style="margin-bottom: 2rem;">
+  <div class="section-card-body">
+    <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+      <div style="flex: 1; min-width: 280px;">
+        <table style="font-size: 13px; width: 100%;">
+          <tr><th style="text-align: left; color: #71717a; font-size: 11px;">METRIC</th><th style="color: #f59e0b;">QWEN</th><th style="color: #34d399;">GEMMA-4</th><th style="color: #a5b4fc;">DELTA</th></tr>
+          <tr><td>Win rate vs Sonnet</td><td class="mono" style="color: #f87171;">15%</td><td class="mono" style="color: #34d399;">59%</td><td class="mono" style="color: #34d399;">+44pp</td></tr>
+          <tr><td>Active params/token</td><td class="mono">3B</td><td class="mono">31B</td><td class="mono" style="color: #34d399;">10x</td></tr>
+          <tr><td>Training examples</td><td class="mono">12</td><td class="mono">135</td><td class="mono" style="color: #34d399;">11x</td></tr>
+          <tr><td>Avg accuracy (/10)</td><td class="mono">6.8</td><td class="mono" style="color: #34d399;">7.9</td><td class="mono" style="color: #34d399;">+1.1</td></tr>
+          <tr><td>Avg expertise (/10)</td><td class="mono">6.6</td><td class="mono" style="color: #34d399;">8.2</td><td class="mono" style="color: #34d399;">+1.6</td></tr>
+          <tr><td>Response truncations</td><td class="mono" style="color: #f87171;">7</td><td class="mono" style="color: #34d399;">0</td><td class="mono" style="color: #34d399;">fixed</td></tr>
+        </table>
+      </div>
+      <div style="flex: 1; min-width: 280px;">
+        <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">WHY GEMMA-4 WINS</div>
+        <div style="font-size: 13px; color: #a1a1aa; line-height: 1.8;">
+          &#9679; <strong style="color: #34d399;">10x active compute</strong> &mdash; dense 31B vs MoE 3B active<br>
+          &#9679; <strong style="color: #34d399;">11x training data</strong> &mdash; 135 Opus-authored vs 12 extracted<br>
+          &#9679; <strong style="color: #34d399;">No truncation</strong> &mdash; no think-mode overhead eating tokens<br>
+          &#9679; <strong style="color: #34d399;">Better knowledge</strong> &mdash; Opus 4.6 responses teach above-Sonnet quality<br>
+          &#9679; <strong style="color: #34d399;">Clean architecture</strong> &mdash; no linear attention bugs
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Serving Challenge -->
+<div class="section-title">Technical Challenge: SGLang Incompatibility</div>
+<div class="section-card" style="margin-bottom: 2rem;">
+  <div class="section-card-body">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem;">
+      <div class="flow-chain" style="display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap;">
+        <div style="background: #1e1b2e; border: 1px solid #4c1d95; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 140px;">
+          <div style="font-size: 11px; font-weight: 600; color: #a5b4fc;">SGLang 0.5.10</div>
+          <div style="font-size: 10px; color: #71717a; margin-top: 4px;">Modality enum</div>
+          <div style="font-size: 10px; color: #f87171;">MULTI_IMAGES missing</div>
+        </div>
+        <div style="display: flex; align-items: center; color: #3f3f46;">&rarr;</div>
+        <div style="background: #1e1b2e; border: 1px solid #4c1d95; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 140px;">
+          <div style="font-size: 11px; font-weight: 600; color: #a5b4fc;">v_norm patch</div>
+          <div style="font-size: 10px; color: #71717a; margin-top: 4px;">RMSNorm dim mismatch</div>
+          <div style="font-size: 10px; color: #f59e0b;">Patched &check;</div>
+        </div>
+        <div style="display: flex; align-items: center; color: #3f3f46;">&rarr;</div>
+        <div style="background: #1e1b2e; border: 1px solid #991b1b; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 140px;">
+          <div style="font-size: 11px; font-weight: 600; color: #f87171;">Mixed Attention</div>
+          <div style="font-size: 10px; color: #71717a; margin-top: 4px;">16 vs 8 KV heads</div>
+          <div style="font-size: 10px; color: #f87171;">UNFIXABLE</div>
+        </div>
+        <div style="display: flex; align-items: center; color: #3f3f46;">&rarr;</div>
+        <div style="background: #052e16; border: 1px solid #166534; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 140px;">
+          <div style="font-size: 11px; font-weight: 600; color: #34d399;">Native Transformers</div>
+          <div style="font-size: 10px; color: #71717a; margin-top: 4px;">FastAPI + uvicorn</div>
+          <div style="font-size: 10px; color: #34d399;">~20 tok/s &check;</div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size: 0.8125rem; color: #52525b;">
+      Gemma-4 uses mixed sliding (1024-window) + full attention with varying KV head counts per layer. SGLang 0.5.10 assumes fixed head count &mdash; fundamental incompatibility. Fell back to native Transformers serving.
+    </p>
+  </div>
+</div>
+
+<!-- Key finding -->
+<div style="padding: 16px; background: linear-gradient(135deg, #052e16 0%, #18181b 100%); border-radius: 10px; border: 1px solid #166534; margin-bottom: 2rem;">
+  <div style="font-size: 11px; color: #34d399; margin-bottom: 8px;">KEY RESULT</div>
+  <div style="font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+    <strong style="color: #34d399;">59% win rate against Sonnet 4.6</strong> with SFT-only model (no GRPO yet). This is 4x improvement over Qwen's 15%. Gemma-4 dominates in <strong>channel attribution</strong>, <strong>debugging</strong>, <strong>general MMM knowledge</strong>, and <strong>technical constraints</strong>. The combination of 10x more active compute + 11x more training data + Opus-level training responses successfully created a model that <em>outperforms</em> Sonnet on domain-specific tasks.
+  </div>
+</div>
+
+<!-- Pipeline -->
+<div class="section-title">Training Pipeline</div>
+<div class="section-card" style="margin-bottom: 2rem;">
+  <div class="section-card-body">
+    <table style="font-size: 12px; width: 100%;">
+      <tr><th style="text-align: left; color: #71717a;">Stage</th><th>Job ID</th><th>Node</th><th>Runtime</th><th>Key Metric</th></tr>
+      <tr>
+        <td style="color: #e4e4ef;">Data Generation</td>
+        <td class="mono" style="color: #a5b4fc;">local</td>
+        <td>Windows</td>
+        <td class="mono">~30 min</td>
+        <td>135 examples via Opus 4.6</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;">SFT (LoRA r=64)</td>
+        <td class="mono" style="color: #a5b4fc;">1856810</td>
+        <td>fat-node-006</td>
+        <td class="mono">~5 min</td>
+        <td>79 GB VRAM</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;">GRPO (6 rewards)</td>
+        <td class="mono" style="color: #a5b4fc;">1856987</td>
+        <td>fat-node-006</td>
+        <td class="mono">3h 17m</td>
+        <td>loss=0.0009, 135 steps</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;">Merge (SFT+GRPO)</td>
+        <td class="mono" style="color: #a5b4fc;">1861257</td>
+        <td>CPU node</td>
+        <td class="mono">~2 min</td>
+        <td>key rename + config convert</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;">Serve (native)</td>
+        <td class="mono" style="color: #a5b4fc;">1860604</td>
+        <td>fat-node-008</td>
+        <td class="mono">ongoing</td>
+        <td>~20 tok/s BF16</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;">Eval vs Sonnet</td>
+        <td class="mono" style="color: #a5b4fc;">local</td>
+        <td>Windows</td>
+        <td class="mono">~25 min</td>
+        <td style="color: #34d399; font-weight: 600;">59% win rate</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+</div>
+<!-- ==================== END GEMMA-4 TAB ==================== -->
+
+<!-- ==================== QWEN TAB ==================== -->
+<div id="tab-qwen" class="tab-content">
+
+<!-- Key Metrics -->
+<div class="section-title">Overview</div>
+<div class="metrics-grid">
+  <div class="metric-card">
+    <div class="label">Total Jobs</div>
+    <div class="value">26</div>
+    <div class="detail">22 failed &middot; 2 successful &middot; 2 cancelled</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">GPU-Hours</div>
+    <div class="value">0.82</div>
+    <div class="detail">B200 (fat) &middot; zero queue wait</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">SFT Final Loss</div>
+    <div class="value" style="color: #34d399;">1.29</div>
+    <div class="detail">from 2.57 &middot; token acc 68%</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">GRPO Steps</div>
+    <div class="value">12</div>
+    <div class="detail">4 gens/prompt &middot; 6 reward fns</div>
+  </div>
+  <div class="metric-card alert">
+    <div class="label">Storage</div>
+    <div class="value">147.9 GB</div>
+    <div class="detail">of 1 TB quota (14.8%)</div>
+  </div>
+  <div class="metric-card">
+    <div class="label">Session Time</div>
+    <div class="value">2h 45m</div>
+    <div class="detail">10:00 &ndash; 12:45 CEST</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- VRAM Diagrams — with legends instead of in-bar text -->
+<div class="section-title">VRAM Allocation</div>
+<div class="two-col" style="margin-bottom: 3rem;">
+  <div class="section-card">
+    <div class="section-card-header">
+      <span class="badge badge-emerald" style="font-size: 10px;">SFT &middot; 80 GB peak</span>
+    </div>
+    <div class="section-card-body">
+      <div class="vram-section">
+        <div class="vram-header">
+          <span class="vram-title">B200 &mdash; 183 GB usable</span>
+          <span class="vram-pct">43.6% used</span>
+        </div>
+        <div class="vram-track">
+          <div class="vram-seg" style="width: 36.6%; background: linear-gradient(135deg, #6366f1, #4f46e5);"></div>
+          <div class="vram-seg" style="width: 0.6%; background: #818cf8;"></div>
+          <div class="vram-seg" style="width: 4.4%; background: #3b82f6;"></div>
+          <div class="vram-seg" style="width: 2.2%; background: #06b6d4;"></div>
+          <div class="vram-seg" style="width: 56.2%; background: rgba(255,255,255,0.015);"></div>
+        </div>
+        <div class="vram-legend">
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #6366f1;"></div> Model BF16 (67 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #818cf8;"></div> LoRA (1 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #3b82f6;"></div> Activations (8 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #06b6d4;"></div> Optimizer (4 GB)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="section-card">
+    <div class="section-card-header">
+      <span class="badge badge-indigo" style="font-size: 10px;">GRPO &middot; 140 GB peak</span>
+    </div>
+    <div class="section-card-body">
+      <div class="vram-section">
+        <div class="vram-header">
+          <span class="vram-title">B200 &mdash; 183 GB usable</span>
+          <span class="vram-pct">76.5% used</span>
+        </div>
+        <div class="vram-track">
+          <div class="vram-seg" style="width: 36.6%; background: linear-gradient(135deg, #6366f1, #4f46e5);"></div>
+          <div class="vram-seg" style="width: 0.6%; background: #818cf8;"></div>
+          <div class="vram-seg" style="width: 10.9%; background: #8b5cf6;"></div>
+          <div class="vram-seg" style="width: 4.4%; background: #3b82f6;"></div>
+          <div class="vram-seg" style="width: 4.4%; background: #06b6d4;"></div>
+          <div class="vram-seg" style="width: 43.1%; background: rgba(255,255,255,0.015);"></div>
+        </div>
+        <div class="vram-legend">
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #6366f1;"></div> Model BF16 (67 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #818cf8;"></div> LoRA (1 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #8b5cf6;"></div> Generations (20 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #3b82f6;"></div> Gradients (8 GB)</div>
+          <div class="vram-legend-item"><div class="vram-legend-dot" style="background: #06b6d4;"></div> Optimizer (8 GB)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Decision Flow — more space, no text overlap -->
+<div class="section-title">Decision Flow &mdash; Why Each Pivot Happened</div>
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-body">
+    <div class="flow-container">
+      <div class="flow-node fail">
+        <strong>QLoRA 4-bit</strong>
+        <span class="flow-sub">2&times;L40S</span>
+        <span class="flow-result" style="color: #f87171;">TRL API fail</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-node fail">
+        <strong>FP8 Quant</strong>
+        <span class="flow-sub">TurboQuant</span>
+        <span class="flow-result" style="color: #f87171;">No backward</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-node fail">
+        <strong>Fix 4-bit</strong>
+        <span class="flow-sub">128G RAM</span>
+        <span class="flow-result" style="color: #f87171;">NLL assertion</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-node fail">
+        <strong>Debug NLL</strong>
+        <span class="flow-sub">Labels valid!</span>
+        <span class="flow-result" style="color: #f87171;">Arch bug</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-node pass">
+        <strong>B200 BF16</strong>
+        <span class="flow-sub">192 GB, no quant</span>
+        <span class="flow-result" style="color: #34d399;">71s &#10003;</span>
+      </div>
+    </div>
+    <p style="font-size: 0.875rem; color: #52525b; text-align: center; margin-top: 1rem;">
+      Root cause: <code>torch_chunk_gated_delta_rule</code> linear attention breaks gradient checkpointing across GPU boundaries
+    </p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Two-Phase Breakdown -->
+<div class="section-title">Phase Breakdown</div>
+<div class="two-col" style="margin-bottom: 3rem;">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Phase 1: "Make QLoRA Work"</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">10:00 &ndash; 11:50 &middot; 22 failed jobs in 110 minutes</p>
+    </div>
+    <div class="section-card-body">
+      <table>
+        <tr><th>Error Class</th><th>Jobs</th><th>Root Cause</th></tr>
+        <tr>
+          <td style="color: #e4e4ef;">TRL API</td>
+          <td class="mono" style="color: #a5b4fc;">2</td>
+          <td>TRL 1.3.0: <code>max_length</code> not <code>max_seq_length</code></td>
+        </tr>
+        <tr>
+          <td style="color: #e4e4ef;">CPU OOM</td>
+          <td class="mono" style="color: #a5b4fc;">3</td>
+          <td>67 GB model passes through CPU during 4-bit</td>
+        </tr>
+        <tr>
+          <td style="color: #e4e4ef;">GPU OOM</td>
+          <td class="mono" style="color: #a5b4fc;">4</td>
+          <td><code>prepare_model_for_kbit_training</code> upcasts</td>
+        </tr>
+        <tr>
+          <td style="color: #e4e4ef;">FP8 Dead End</td>
+          <td class="mono" style="color: #a5b4fc;">4</td>
+          <td>No autograd formula for FP8 matmul</td>
+        </tr>
+        <tr>
+          <td style="color: #f87171;">NLL Assertion</td>
+          <td class="mono" style="color: #fca5a5;">6</td>
+          <td>Linear attn + grad ckpt + multi-GPU</td>
+        </tr>
+        <tr>
+          <td style="color: #e4e4ef;">Misc</td>
+          <td class="mono" style="color: #a5b4fc;">3</td>
+          <td>Module dispatch, imports, paths</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Phase 2: "Right Hardware"</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">12:00 &ndash; 12:45 &middot; 4 jobs, 2 successful</p>
+    </div>
+    <div class="section-card-body">
+      <table>
+        <tr><th>Job</th><th>Task</th><th>Time</th><th>Result</th></tr>
+        <tr>
+          <td class="mono" style="color: #a5b4fc;">1804326</td>
+          <td style="color: #e4e4ef;">SFT (BF16)</td>
+          <td class="mono">2:30</td>
+          <td><span class="badge badge-emerald" style="font-size: 9px; padding: 2px 8px;">OK</span></td>
+        </tr>
+        <tr>
+          <td class="mono" style="color: #a5b4fc;">1804330</td>
+          <td style="color: #e4e4ef;">GRPO v1</td>
+          <td class="mono">0:59</td>
+          <td><span class="badge badge-red" style="font-size: 9px; padding: 2px 8px;">list.lower()</span></td>
+        </tr>
+        <tr>
+          <td class="mono" style="color: #a5b4fc;">1804336</td>
+          <td style="color: #e4e4ef;">GRPO v2</td>
+          <td class="mono">0:57</td>
+          <td><span class="badge badge-red" style="font-size: 9px; padding: 2px 8px;">list.to()</span></td>
+        </tr>
+        <tr>
+          <td class="mono" style="color: #a5b4fc;">1804337</td>
+          <td style="color: #e4e4ef;">GRPO v3</td>
+          <td class="mono">8:41</td>
+          <td><span class="badge badge-emerald" style="font-size: 9px; padding: 2px 8px;">OK</span></td>
+        </tr>
+      </table>
+      <div class="callout callout-emerald" style="margin-top: 1.25rem;">
+        <strong style="color: #34d399;">Key insight:</strong> If a model can't be quantized without arch bugs, don't quantize it. Single B200 BF16 eliminates all multi-GPU + quantization + gradient checkpoint issues.
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- GRPO Reward Functions -->
+<div class="section-title">GRPO Reward Scores (Final Step)</div>
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-body">
+    <p style="font-size: 0.875rem; color: #71717a; margin-bottom: 1.5rem;">
+      6 rule-based reward functions scored each of 4 generated completions at step 12:
+    </p>
+    <div>
+      <div class="reward-row">
+        <div class="reward-label">gate_awareness</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 95%; background: linear-gradient(90deg, #10b981, #34d399);"></div></div>
+        <div class="reward-value" style="color: #34d399;">0.95</div>
+      </div>
+      <div class="reward-row">
+        <div class="reward-label">evidence_reasoning</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 61%; background: linear-gradient(90deg, #3b82f6, #60a5fa);"></div></div>
+        <div class="reward-value" style="color: #60a5fa;">0.61</div>
+      </div>
+      <div class="reward-row">
+        <div class="reward-label">domain_correctness</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 45%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div></div>
+        <div class="reward-value" style="color: #a78bfa;">0.45</div>
+      </div>
+      <div class="reward-row">
+        <div class="reward-label">length</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 30%; background: linear-gradient(90deg, #6366f1, #818cf8);"></div></div>
+        <div class="reward-value" style="color: #818cf8;">0.30</div>
+      </div>
+      <div class="reward-row">
+        <div class="reward-label">structure</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 2%; background: #ef4444;"></div></div>
+        <div class="reward-value" style="color: #f87171;">0.00</div>
+      </div>
+      <div class="reward-row">
+        <div class="reward-label">config_format</div>
+        <div class="reward-track"><div class="reward-fill" style="width: 2%; background: #ef4444;"></div></div>
+        <div class="reward-value" style="color: #f87171;">0.00</div>
+      </div>
+    </div>
+    <div class="callout callout-amber">
+      <strong>Why structure &amp; config_format = 0:</strong> Qwen3.6 generates in "thinking mode" (numbered reasoning)
+      rather than <code>## Approach</code> / <code>## Config Changes</code> markdown. Reward functions need
+      tuning to match the model's natural style &mdash; or a second GRPO pass with adjusted patterns.
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Full Timeline -->
+<div class="section-title">Complete Job Timeline (26 submissions)</div>
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-body" style="max-height: 580px; overflow-y: auto;">
+    <div class="timeline">
+      <div class="tl-item"><span class="tl-time">10:00 #1803487</span> gpu/L40S &mdash; Initial script test<div class="tl-error">Script path wrong</div></div>
+      <div class="tl-item"><span class="tl-time">10:05 #1803531</span> gpu/L40S &mdash; Fix path, run again<div class="tl-error">TRL API: max_seq_length not recognized</div></div>
+      <div class="tl-item"><span class="tl-time">10:08 #1803608</span> gpu/L40S &mdash; Quick fix attempt<div class="tl-error">CANCELLED: Wrong fix</div></div>
+      <div class="tl-item"><span class="tl-time">10:12 #1803709</span> gpu/L40S &mdash; Fixed TRL API (max_length)<div class="tl-error">FP8 quantization not valid for training</div></div>
+      <div class="tl-item"><span class="tl-time">10:18 #1803784</span> gpu/L40S &mdash; Switch to 4-bit NF4<div class="tl-error">prepare_model_for_kbit_training import path</div></div>
+      <div class="tl-item"><span class="tl-time">10:22 #1803823</span> gpu/L40S &mdash; Fix import<div class="tl-error">Another import issue (kernels package)</div></div>
+      <div class="tl-item"><span class="tl-time">10:28 #1803902</span> gpu/L40S &mdash; QLoRA 4-bit standard recipe<div class="tl-error">SFTConfig keyword mismatch (TRL 1.3.0)</div></div>
+      <div class="tl-item"><span class="tl-time">10:32 #1803961</span> gpu/L40S &mdash; Try FP8 quantization<div class="tl-error">validate_quantization_for_training rejects FP8</div></div>
+      <div class="tl-item"><span class="tl-time">10:38 #1803994</span> gpu/L40S &mdash; 4-bit, mem=64G<div class="tl-error">OUT_OF_MEMORY: 67 GB model through CPU</div></div>
+      <div class="tl-item"><span class="tl-time">10:42 #1804014</span> gpu/L40S &mdash; 4-bit, mem=128G<div class="tl-error">GPU OOM in prepare_model_for_kbit_training</div></div>
+      <div class="tl-item"><span class="tl-time">10:48 #1804038</span> gpu/L40S &mdash; Remove prepare_model<div class="tl-error">"Some modules dispatched on CPU"</div></div>
+      <div class="tl-item"><span class="tl-time">10:50 #1804052</span> gpu/L40S &mdash; device_map=auto<div class="tl-error">NLL loss assertion (t &ge; 0 &amp;&amp; t &lt; n_classes)</div></div>
+      <div class="tl-item"><span class="tl-time">10:57 #1804140</span> gpu/L40S &mdash; grad_ckpt=False<div class="tl-error">Same NLL assertion</div></div>
+      <div class="tl-item"><span class="tl-time">11:04 #1804176</span> gpu/L40S &mdash; Label validation logging<div class="tl-error">Labels valid! Bug is elsewhere.</div></div>
+      <div class="tl-item"><span class="tl-time">11:09 #1804209</span> gpu/L40S &mdash; FP8 again (install kernels)<div class="tl-error">ImportError: finegrained-fp8 not found</div></div>
+      <div class="tl-item"><span class="tl-time">11:12 #1804237</span> gpu/L40S &mdash; Monkey-patch FP8<div class="tl-error">from...import caches fn ref, patch fails</div></div>
+      <div class="tl-item"><span class="tl-time">11:21 #1804272</span> gpu/L40S &mdash; Double-patch<div class="tl-error">"no autograd formula for fp8_matmul" &mdash; dead end</div></div>
+      <div class="tl-item"><span class="tl-time">11:28 #1804312</span> gpu/L40S &mdash; 4-bit, grad_ckpt off<div class="tl-error">Still NLL assertion on multi-GPU</div></div>
+      <div class="tl-item"><span class="tl-time">11:31 #1804317</span> gpu/1&times;L40S &mdash; Single GPU<div class="tl-error">OOM during quant load (&gt;44 GB peak)</div></div>
+      <div class="tl-item"><span class="tl-time">11:34 #1804318</span> gpu/L40S &mdash; Different device_map<div class="tl-error">Same fundamental issue</div></div>
+      <div class="tl-item"><span class="tl-time">11:41 #1804319</span> gpu/2&times;L40S &mdash; grad_ckpt=False<div class="tl-error">Forward OK, backward OOM on GPU 1</div></div>
+      <div class="tl-item"><span class="tl-time">11:46 #1804321</span> gpu/2&times;L40S &mdash; grad_ckpt=True<div class="tl-error">NLL returns. ckpt + multi-GPU = confirmed bug.</div></div>
+      <div class="tl-item"><span class="tl-time">11:51 #1804324</span> gpu/2&times;L40S &mdash; Final confirmation<div class="tl-error">Same. Root cause locked. Pivoting.</div></div>
+      <div class="tl-item pivot"><span class="tl-time">11:55</span> <strong style="color: #fbbf24;">PIVOT &mdash; Switch to fat partition (B200, 192 GB)</strong><div style="font-size: 0.8125rem; color: #92400e; margin-top: 4px;">Linear attention + grad checkpointing + multi-GPU = corrupted logits. Single B200 eliminates all three.</div></div>
+      <div class="tl-item success"><span class="tl-time">12:13 #1804326</span> fat/B200 &mdash; BF16, single GPU<div class="tl-success">&#10003; SFT COMPLETE in 71s. Loss 2.57 &rarr; 1.29. Token acc 50% &rarr; 68%.</div></div>
+      <div class="tl-item"><span class="tl-time">12:23 #1804330</span> fat/B200 &mdash; GRPO v1<div class="tl-error">TRL passes completions as list[list[dict]]</div></div>
+      <div class="tl-item"><span class="tl-time">12:31 #1804336</span> fat/B200 &mdash; GRPO v2<div class="tl-error">reward_weights must be in GRPOConfig</div></div>
+      <div class="tl-item success"><span class="tl-time">12:34 #1804337</span> fat/B200 &mdash; GRPO v3 (final)<div class="tl-success">&#10003; GRPO COMPLETE in 494s. 12 prompts &times; 4 gens. All rewards scoring.</div></div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Why v11_fast -->
+<div class="section-title">Why "v11_fast" in the Output</div>
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-body">
+    <p style="font-size: 0.9375rem; color: #a1a1aa; margin-bottom: 1rem;">
+      The GRPO completion referenced <code>v11_fast</code> because <strong style="color: #e4e4ef;">that's the prompt content</strong> &mdash;
+      not a model "choice."
+    </p>
+    <p style="font-size: 0.875rem; color: #71717a; margin-bottom: 1rem;">
+      Our 12 SFT pairs come from 14 meta-harness iterations. Each prompt contains the <em>previous</em> iteration's diagnostic context.
+      GRPO sampled the last prompt (step 12) which happened to contain v11_fast's results:
+    </p>
+    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 0.625rem; padding: 1.25rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; color: #71717a; line-height: 1.8;">
+      <span style="color: #a1a1aa;">Previous iteration (v11_fast):</span><br>
+      &nbsp;&nbsp;F2F plausibility: <span style="color: #fbbf24;">70.3%</span><br>
+      &nbsp;&nbsp;Email attribution: <span style="color: #fbbf24;">18.6%</span><br>
+      &nbsp;&nbsp;Trust: <span style="color: #f87171;">33</span> (gate FAILED, needs &gt;50)<br>
+      &nbsp;&nbsp;ESS bulk: <span style="color: #f87171;">3</span> (gate FAILED, needs &gt;100)<br>
+      &nbsp;&nbsp;Diagnosis: inadequate sampling (tune=100 insufficient)
+    </div>
+    <p style="font-size: 0.875rem; color: #52525b; margin-top: 1.25rem;">
+      The model demonstrated correct domain knowledge: identified trust/ESS failures, reasoned about Gamma priors and sampling parameters.
+    </p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- HPC Observations -->
+<div class="section-title">HPC Cluster Observations</div>
+<div class="obs-grid" style="margin-bottom: 3rem;">
+  <div class="obs-card">
+    <h4>Fat partition is empty</h4>
+    <p>64 B200 GPUs (8 nodes &times; 8). Every job started in &lt;15 seconds. Zero queue wait. Most users haven't migrated from L40S yet.</p>
+  </div>
+  <div class="obs-card">
+    <h4>B200 = 183 GB, not 192 GB</h4>
+    <p>~9 GB reserved for ECC + system overhead. Still 43 GB headroom beyond our GRPO peak (140 GB).</p>
+  </div>
+  <div class="obs-card">
+    <h4>Model loads in 14 seconds</h4>
+    <p>1026 weight shards at 73/sec. VAST NVMe storage provides excellent sequential bandwidth. No I/O bottleneck.</p>
+  </div>
+  <div class="obs-card">
+    <h4>No flash-linear-attention</h4>
+    <p>"fast path not available" warning. Using torch fallback. Installing <code>fla</code> could give 2-3&times; generation speedup.</p>
+  </div>
+  <div class="obs-card">
+    <h4>Same node every time</h4>
+    <p>All 4 fat jobs on fat-node-006. Slurm warm-node preference means weights may stay in OS page cache.</p>
+  </div>
+  <div class="obs-card">
+    <h4>~50 tok/s generation</h4>
+    <p>4&times;512 tokens in ~30s. Reasonable for 35B BF16 without FlashAttention or speculative decoding.</p>
+  </div>
+</div>
+
+<!-- Storage -->
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-body">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <span style="font-size: 0.9375rem; color: #a1a1aa; font-weight: 500;">Project Storage</span>
+      <span style="font-size: 0.875rem; font-family: 'JetBrains Mono', monospace; color: #71717a;">147.9 GB / 1,000 GB</span>
+    </div>
+    <div class="storage-bar-outer">
+      <div class="storage-bar-fill" style="width: 14.8%;"></div>
+    </div>
+    <div style="font-size: 0.75rem; color: #3f3f46; text-align: right;">14.8% of quota</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1.25rem;">
+      <div>
+        <div style="font-size: 0.875rem; color: #71717a;">Base Model (BF16)</div>
+        <div style="font-size: 1rem; color: #a5b4fc; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">~67 GB</div>
+      </div>
+      <div>
+        <div style="font-size: 0.875rem; color: #71717a;">SFT Adapter</div>
+        <div style="font-size: 1rem; color: #34d399; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">~1.2 GB</div>
+      </div>
+      <div>
+        <div style="font-size: 0.875rem; color: #71717a;">GRPO Adapter</div>
+        <div style="font-size: 1rem; color: #34d399; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">~1.2 GB</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Next Steps — updated with readiness context -->
+<div class="section-title">What's Next &mdash; Ready to Deploy</div>
+<div class="section-card">
+  <div class="section-card-body">
+    <div class="callout callout-emerald" style="margin-bottom: 1.5rem; margin-top: 0;">
+      <strong style="color: #34d399;">Status:</strong> Fine-tuned model is <strong>live and serving</strong> on fat-node-005:8100 (Job 1822552).
+      Adapters merged 2026-05-06, deployed same day. Pi CLI connects transparently.
+    </div>
+    <ul class="next-steps-list">
+      <li style="opacity: 0.5;">
+        <div class="step-num" style="background: #10b981; color: #fff;">&#10003;</div>
+        <div class="step-content">
+          <strong style="text-decoration: line-through;">Merge adapters into base model</strong>
+          <div class="step-meta">Done 2026-05-06 &middot; Job 1822232 &middot; 1m33s &middot; 69.3 GB BF16</div>
+        </div>
+      </li>
+      <li style="opacity: 0.5;">
+        <div class="step-num" style="background: #10b981; color: #fff;">&#10003;</div>
+        <div class="step-content">
+          <strong style="text-decoration: line-through;">Deploy as SGLang inference endpoint</strong>
+          <div class="step-meta">Done 2026-05-06 &middot; Job 1822552 &middot; B200 &middot; 33 tok/s &middot; port 8100</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Wire into meta-harness as local proposer</strong>
+          <div class="step-meta">Requires step 2 &middot; Replace UPTIMIZE Claude API calls with local endpoint &middot; 1-2 hrs</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Side-by-side evaluation: fine-tuned vs base</strong>
+          <div class="step-meta">Requires step 1 &middot; Score both on held-out prompts &middot; ~30 min</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <strong>Tune reward functions for model's natural style</strong>
+          <div class="step-meta">Structure/config_format scored 0 due to thinking-mode output. Adjust patterns, re-run GRPO.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-content">
+          <strong>Data augmentation (12 pairs &rarr; 50+)</strong>
+          <div class="step-meta">Generate synthetic SFT pairs from fine-tuned model + manual curation</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">7</div>
+        <div class="step-content">
+          <strong>Install flash-linear-attention for faster inference</strong>
+          <div class="step-meta">Optional &middot; 2-3&times; generation speedup &middot; <code>pip install fla</code></div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- Deployment Section -->
+<div class="section-title">Deployment (2026-05-06)</div>
+<div class="section-card" style="margin-bottom: 2.5rem;">
+  <div class="section-card-body">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+      <div>
+        <h3 style="color: #34d399; font-size: 14px; margin-bottom: 8px;">Adapter Merge (Job 1822232)</h3>
+        <table style="font-size: 12px; width: 100%;">
+          <tr><td style="color: #71717a; padding: 2px 0;">Node</td><td class="mono">fat-node-005 (B200)</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Runtime</td><td class="mono">1m 33s</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Base load</td><td class="mono">9.7s (693 shards)</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">SFT merge</td><td class="mono">1.7s</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">GRPO merge</td><td class="mono">0.4s</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Save</td><td class="mono">74.0s (21 shards, 69.3 GB)</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 style="color: #818cf8; font-size: 14px; margin-bottom: 8px;">Serving (Job 1822552)</h3>
+        <table style="font-size: 12px; width: 100%;">
+          <tr><td style="color: #71717a; padding: 2px 0;">Engine</td><td class="mono">SGLang 0.5.9</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Model VRAM</td><td class="mono">65.49 GB (BF16)</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">KV Cache</td><td class="mono">49.66 GB (K+V)</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Throughput</td><td class="mono">33 tok/s</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Context</td><td class="mono">65,536 tokens</td></tr>
+          <tr><td style="color: #71717a; padding: 2px 0;">Endpoint</td><td class="mono">:8100/v1/chat/completions</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top: 1.5rem; padding: 12px 16px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 6px;">CONNECT</div>
+      <code style="font-size: 12px; color: #a5b4fc;">ssh -L 8100:fat-node-005:8100 -N user@hpc-cluster.example.com</code><br>
+      <code style="font-size: 12px; color: #6ee7b7;">omp --model hpc-qwen/qwen3.6-35b-a3b</code>
+    </div>
+    <div style="margin-top: 1rem; padding: 12px 16px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 6px;">COMPATIBILITY ISSUES RESOLVED</div>
+      <div style="font-size: 12px; color: #a1a1aa; line-height: 1.8;">
+        &#9679; Slurm requires explicit GPU type: <code>--gres=gpu:b200:1</code><br>
+        &#9679; PEFT 0.19.1 &rarr; downgrade to 0.15.2 (WeightConverter API mismatch)<br>
+        &#9679; Merged model config.json: copy base model&rsquo;s config (SGLang needs multimodal wrapper)<br>
+        &#9679; Transformers 5.8 breaks SGLang &rarr; keep serving venv at 4.57.1<br>
+        &#9679; FlashInfer B200 kernel JIT: ~8 min first-time compilation + <code>--disable-cuda-graph</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Evaluation -->
+<div class="section-title">Evaluation: Qwen MMM vs Sonnet 4.6 <span class="badge badge-indigo" style="margin-left: 0.75rem; vertical-align: middle;">Judged by Opus 4.6</span></div>
+<div class="section-card" style="margin-bottom: 2.5rem;">
+  <div class="section-card-body">
+  <p style="color: #a1a1aa; margin-bottom: 1.5rem;">
+    27-prompt golden test dataset across 10 categories. Blind evaluation with position-randomized responses. 20/27 tests completed (7 lost to server disconnect).
+  </p>
+
+  <!-- Results grid -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 1.5rem;">
+    <!-- Sonnet -->
+    <div style="background: #18181b; border-radius: 12px; padding: 20px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">SONNET 4.6 (GENERAL)</div>
+      <div style="font-size: 36px; font-weight: 700; color: #818cf8;">30.0<span style="font-size: 14px; color: #52525b;">/40</span></div>
+      <div style="font-size: 14px; color: #818cf8; margin-top: 4px;">16 wins (80%)</div>
+      <table style="margin-top: 12px; font-size: 12px; width: 100%;">
+        <tr><td style="color: #71717a; padding: 2px 0;">Accuracy</td><td class="mono" style="text-align:right;">7.6</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Completeness</td><td class="mono" style="text-align:right;">8.1</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Evidence</td><td class="mono" style="text-align:right;">6.5</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Expertise</td><td class="mono" style="text-align:right;">7.8</td></tr>
+      </table>
+    </div>
+    <!-- Qwen -->
+    <div style="background: #18181b; border-radius: 12px; padding: 20px; border: 1px solid #27272a;">
+      <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">QWEN MMM (FINE-TUNED)</div>
+      <div style="font-size: 36px; font-weight: 700; color: #f59e0b;">25.9<span style="font-size: 14px; color: #52525b;">/40</span></div>
+      <div style="font-size: 14px; color: #f59e0b; margin-top: 4px;">4 wins (20%)</div>
+      <table style="margin-top: 12px; font-size: 12px; width: 100%;">
+        <tr><td style="color: #71717a; padding: 2px 0;">Accuracy</td><td class="mono" style="text-align:right;">6.8</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Completeness</td><td class="mono" style="text-align:right;">7.2</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Evidence</td><td class="mono" style="text-align:right;">5.3</td></tr>
+        <tr><td style="color: #71717a; padding: 2px 0;">Expertise</td><td class="mono" style="text-align:right;">6.6</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Category bars -->
+  <div style="margin-bottom: 1.5rem;">
+    <div style="font-size: 11px; color: #71717a; margin-bottom: 8px;">CATEGORY BREAKDOWN</div>
+    <div style="display: grid; gap: 6px; font-size: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Config generation</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet 3-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Diagnostics</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet 3-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Optimization</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet 3-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">General MMM</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet 3-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Scenario planning</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">Sonnet 2-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Technical constraints</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 100%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">Qwen 2-0</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Channel attribution</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+          <div style="width: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">Q</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 130px; color: #a1a1aa;">Gate failures</span>
+        <div style="flex: 1; height: 18px; background: #27272a; border-radius: 4px; overflow: hidden; display: flex;">
+          <div style="width: 50%; background: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 10px;">S</div>
+          <div style="width: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #000;">Q</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key finding -->
+  <div style="padding: 16px; background: linear-gradient(135deg, #1e1b4b 0%, #18181b 100%); border-radius: 10px; border: 1px solid #4c1d95;">
+    <div style="font-size: 11px; color: #a78bfa; margin-bottom: 8px;">KEY FINDING</div>
+    <div style="font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+      Fine-tuning on 12 examples embedded <strong style="color: #f59e0b;">project-specific knowledge</strong> (version bugs, locked parameters, confounding patterns) but couldn't match Sonnet 4.6's <strong style="color: #818cf8;">reasoning and presentation quality</strong>. The Qwen model generates in think-mode &mdash; correct knowledge buried in unpolished, stream-of-consciousness output. Value proposition: <strong>domain knowledge complement</strong> via RAG, not full replacement.
+    </div>
+  </div>
+
+  <!-- Improvement roadmap -->
+  <div style="margin-top: 1rem; padding: 12px 16px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+    <div style="font-size: 11px; color: #71717a; margin-bottom: 6px;">IMPROVEMENT ROADMAP</div>
+    <div style="font-size: 12px; color: #a1a1aa; line-height: 1.8;">
+      &#9679; Scale SFT data from 12 to 100+ examples with polished assistant responses<br>
+      &#9679; DPO training: Sonnet answers (chosen) vs Qwen think-dumps (rejected)<br>
+      &#9679; System prompt engineering for structured output during inference<br>
+      &#9679; Consider RAG architecture: Sonnet 4.6 + project docs retrieval
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- Footer (Qwen tab) -->
+<div class="footer">
+  Updated 2026-05-06 &middot; 32 Slurm jobs &middot; 0.92 GPU-hours &middot; 2 training + 1 merge + 1 serve + 1 eval<br>
+  <span style="color: #27272a;">Qwen3.6-35B-A3B-MMM &middot; oneHPC fat partition &middot; NVIDIA B200 192 GB &middot; Evaluated vs Sonnet 4.6</span>
+</div>
+
+</div>
+<!-- ==================== END QWEN TAB ==================== -->
+
+<!-- ==================== MINIMAX M3 B200 RENDEZVOUS FIX (2026-07-12) ==================== -->
+<hr class="divider">
+
+<div class="section-title">MiniMax M3 MXFP8 on 4× B200 &mdash; the <code style="font-size:0.9em;">symmetric_memory.rendezvous</code> deadlock <span class="badge badge-indigo" style="margin-left: 0.75rem; vertical-align: middle;">2026-07-12</span></div>
+
+<div class="two-col" style="margin-bottom: 3rem;">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Symptom</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">7 jobs deadlocked at NCCL init &middot; GPU 1.1GB / 0% util &middot; log frozen</p>
+    </div>
+    <div class="section-card-body">
+      <p style="font-size: 0.875rem; color: #a1a1aa;">
+        MiniMax M3 MXFP8 (427B MoE / 26B active, multimodal) would not boot on 4× B200.
+        Workers reached <code>world_size=4 backend=nccl</code> then froze. A prior boot
+        (2026-06-22, job 2190313, same container/args) had succeeded in 33s — so the config
+        was supported, the deadlock was non-deterministic.
+      </p>
+      <p style="font-size: 0.8125rem; color: #52525b; text-align: center; margin-top: 1rem;">
+        <code>strace -c</code>: ~350K <code>ioctl</code>+<code>sched_yield</code>/sec &middot; R-state &middot; <code>wchan=0</code> &middot; pure userspace spin
+      </p>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Root cause (py-spy)</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">Model-layer call to fused all-reduce+RMSNorm</p>
+    </div>
+    <div class="section-card-body">
+      <pre style="font-size: 0.75rem; color: #a5b4fc; background: #0f0f14; padding: 0.75rem; border-radius: 6px; overflow-x: auto; line-height: 1.5;">rendezvous  (torch/_symmetric_memory/__init__.py:1991)
+  &larr; trtllm_create_ipc_workspace_for_all_reduce_fusion
+  &larr; flashinfer_all_reduce._create_workspace
+  &larr; get_fi_ar_workspace
+  &larr; _can_use_flashinfer  (fused_allreduce_gemma_rms_norm.py:90)
+  &larr; <b style="color:#f87171;">fused_allreduce_gemma_rms_norm.forward</b>
+  &larr; minimax_m3/nvidia/model.py:760  (direct model-layer call)</pre>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 0.5rem;">
+        MiniMax's model calls the fused op <em>directly in forward()</em> — bypassing every
+        config flag (<code>-O 1</code>, <code>--enforce-eager</code>, <code>VLLM_ALLREDUCE_USE_*</code>).
+        vLLM issue <a href="https://github.com/vllm-project/vllm/issues/45800" style="color:#a5b4fc;">#45800</a> reports the same hang (open/unresolved).
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-header">
+    <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">The fix &mdash; bind-mounted source patch</h2>
+    <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">Two vLLM source files patched &amp; bound over the container's copies</p>
+  </div>
+  <div class="section-card-body">
+    <table>
+      <tr><th>File</th><th>Patch</th><th>Effect</th></tr>
+      <tr>
+        <td style="color: #e4e4ef;"><code>fused_allreduce_gemma_rms_norm.py</code></td>
+        <td><code>_can_use_flashinfer() &rarr; (False, 0)</code></td>
+        <td>Model takes fallback: <code>all_reduce + GemmaRMSNorm</code> (numerically identical, per vLLM docstring)</td>
+      </tr>
+      <tr>
+        <td style="color: #e4e4ef;"><code>flashinfer_all_reduce.py</code></td>
+        <td><code>get_fi_ar_workspace() &rarr; None</code></td>
+        <td>Belt-and-suspenders: any caller skips <code>_create_workspace &rarr; rendezvous</code></td>
+      </tr>
+    </table>
+    <p style="font-size: 0.8125rem; color: #52525b; margin-top: 0.75rem;">
+      Patched files: <code>/shared/project/<account>/llm/tmp/vllm-patch/vllm/{...}</code> &middot; wired in <code>serving/serve-minimax-m3-container.sh</code>.
+      With the patch: boot reaches <code>cuda_communicator.py:245 Using ['CUSTOM','PYNCCL']</code>, loads weights in ~30s, compiles CUTLASS MSA kernels for SM100 (cold-cache AOT ~3min), then serves.
+    </p>
+  </div>
+</div>
+
+<div class="two-col" style="margin-bottom: 3rem;">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #34d399;">Result &mdash; healthy</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">4× B200 &middot; TP=4+EP &middot; port 8105 &middot; 811K ctx &middot; vision+video</p>
+    </div>
+    <div class="section-card-body">
+      <ul style="font-size: 0.875rem; color: #a1a1aa; padding-left: 1.25rem; line-height: 1.7;">
+        <li><code>/health</code> 200 OK &middot; GPU mem 150GB &middot; util 73–99% under load</li>
+        <li>Text + image (image_url) inference verified</li>
+        <li><b style="color:#34d399;">claude-minimax e2e:</b> <code>claude &rarr; :5032 (logger) &rarr; :5014 (proxy) &rarr; :8105 (tunnel) &rarr; MiniMax</code></li>
+        <li>Tool calls work (Bash tool ran <code>echo MINIMAX_E2E_OK</code>) &middot; per-request <code>&lt;mm:think&gt;</code> works</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 style="font-size: 1.0625rem; font-weight: 600; color: #f87171;">Why 2× B200 was impossible</h2>
+      <p style="font-size: 0.8125rem; color: #52525b; margin-top: 6px;">Three independent walls &mdash; not a config issue</p>
+    </div>
+    <div class="section-card-body">
+      <table>
+        <tr><th>Path</th><th>Blocker</th></tr>
+        <tr><td style="color: #e4e4ef;">NVFP4 (233GB, fits 2×)</td><td>TP=2 deadlocks in MSA rendezvous &middot; vLLM recipe tests TP=8 only</td></tr>
+        <tr><td style="color: #e4e4ef;">MXFP8/FP8 (414GB)</td><td>207GB/GPU &gt; 192GB &middot; OOM</td></tr>
+        <tr><td style="color: #e4e4ef;">Pipeline parallel (PP=2)</td><td><code>NotImplementedError</code> &mdash; MiniMax M3 lacks <code>SupportsPP</code></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section-card" style="margin-bottom: 3rem;">
+  <div class="section-card-header">
+    <h2 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef;">Lessons</h2>
+  </div>
+  <div class="section-card-body">
+    <ol style="font-size: 0.875rem; color: #a1a1aa; padding-left: 1.25rem; line-height: 1.75;">
+      <li><b>Research upstream before the 2nd failing boot.</b> 7 jobs re-derived what the vLLM recipe + issue #45800 said in one fetch.</li>
+      <li><b><code>strace -c</code> + <code>py-spy dump</code> are decisive</b> for "stuck process" — <code>ps</code> can't tell real work from spin. strace syscall-count + py-spy stack found the call site in minutes.</li>
+      <li><b>The Blackwell cold-boot wedge is a family.</b> GLM-5.2 (SGLang, FlashInfer autotune) &amp; MiniMax M3 (vLLM, symmetric_memory.rendezvous) — same B200/SM100 cold-cache deadlock class.</li>
+      <li><b>Read the source for the real env-var name.</b> vLLM naming is inconsistent (<code>_BACKEND</code> vs <code>_USE_FLASHINFER</code> vs <code>_USE_SYMM_MEM</code>); issue #45800's reporter tried the wrong name and gave up.</li>
+      <li><b>When flags don't gate the buggy path, patch the source.</b> Every config flag targets paths the MiniMax model doesn't use — it calls the fused op directly in <code>forward()</code>. A bind-mounted source patch is the surgical fix.</li>
+    </ol>
+  </div>
+</div>
+<!-- ==================== END MINIMAX M3 B200 ==================== -->
+
+<!-- ==================== V4-FLASH-0731 + DSPARK (2026-08-05) ==================== -->
+<div class="section-title">DeepSeek V4-Flash-0731 + DSpark &mdash; 256 tok/s on 4× B200 <span class="badge badge-indigo" style="margin-left: 0.75rem; vertical-align: middle;">2026-08-05</span></div>
+
+<div style="background: #fafafa; border: 1px solid #e4e4ef; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1.5rem;">
+  <p style="margin-top: 0;"><strong>The win:</strong> DeepSeek V4-Flash-0731 hits <strong>256 tok/s on 4× B200</strong> with DSpark speculation &mdash; matching/beating GLM-5.2 FP8 on 8× B200 (~220-250 tok/s), on half the hardware. 3.1× the 83 tok/s baseline.</p>
+
+  <h3 style="font-size: 1.0625rem; font-weight: 600; color: #34d399; margin-top: 1.5rem;">The 11-attempt journey</h3>
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem;">
+    <thead>
+      <tr style="border-bottom: 2px solid #e4e4ef;">
+        <th style="text-align: left; padding: 0.5rem;">#</th>
+        <th style="text-align: left; padding: 0.5rem;">Config</th>
+        <th style="text-align: left; padding: 0.5rem;">tok/s</th>
+        <th style="text-align: left; padding: 0.5rem;">Outcome</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">1</td><td style="padding: 0.5rem;">EAGLE 3-token, sglang-dsv4-blackwell.sif 0.5.10rc0</td><td style="padding: 0.5rem;">crash</td><td style="padding: 0.5rem;">wrong container (no DFLASH/DSpark)</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">2</td><td style="padding: 0.5rem;">DFLASH, sglang-latest.sif 0.5.13.post1</td><td style="padding: 0.5rem;">crash</td><td style="padding: 0.5rem;">DFLASH not allowed for DeepSeekV4</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">3</td><td style="padding: 0.5rem;">DSPARK, sglang-latest.sif 0.5.13.post1</td><td style="padding: 0.5rem;">crash</td><td style="padding: 0.5rem;">DSPARK not in allowed list (needs 0.5.16+)</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">4</td><td style="padding: 0.5rem;">EAGLE 3-token + mem 0.85</td><td style="padding: 0.5rem;">83</td><td style="padding: 0.5rem;">baseline</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">5</td><td style="padding: 0.5rem;">EAGLE 5-token + FP4 indexer</td><td style="padding: 0.5rem;">82</td><td style="padding: 0.5rem;">no improvement</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">6</td><td style="padding: 0.5rem;">EAGLE 7-token + cuda-graph-max-bs 4</td><td style="padding: 0.5rem;">76</td><td style="padding: 0.5rem;">worse (acceptance drops with more tokens)</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">7</td><td style="padding: 0.5rem;">EAGLE 2-token + cuda-graph-max-bs 1</td><td style="padding: 0.5rem;">94</td><td style="padding: 0.5rem;">slightly better</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">8</td><td style="padding: 0.5rem;">No speculation + cuda-graph-max-bs 1 + mem 0.92</td><td style="padding: 0.5rem;">119</td><td style="padding: 0.5rem;">best non-DSpark config</td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">9</td><td style="padding: 0.5rem;"><code>deep_gemm</code> MoE backend (no spec)</td><td style="padding: 0.5rem;">crash</td><td style="padding: 0.5rem;">TVM kernel bug <code>SiluAndMulMaskedPostQuantKernel</code></td></tr>
+      <tr style="border-bottom: 1px solid #f0f0f5;"><td style="padding: 0.5rem;">10</td><td style="padding: 0.5rem;"><code>--enable-multi-layer-eagle</code></td><td style="padding: 0.5rem;">crash</td><td style="padding: 0.5rem;"><code>draft_model_idx</code> TypeError</td></tr>
+      <tr style="border-bottom: 2px solid #34d399; background: #f0fdf4;"><td style="padding: 0.5rem; font-weight: 600;">11</td><td style="padding: 0.5rem; font-weight: 600;">DSpark gamma=5, sglang-v0516.sif (SGLang 0.5.16)</td><td style="padding: 0.5rem; font-weight: 600; color: #34d399;">256</td><td style="padding: 0.5rem; font-weight: 600;">✅ goal met</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef; margin-top: 1.5rem;">The breakthrough</h3>
+  <p>DSpark is DeepSeek's native speculation algorithm (arXiv 2606.19348, PR #30261 in SGLang, released July 2026 in v0.5.16). It uses layers 40-42 of the same checkpoint as the drafter &mdash; no separate draft model, no extra VRAM. The hard requirement: <strong>SGLang 0.5.16+</strong> (<code>sglang-v0516.sif</code>).</p>
+
+  <p>Our <code>sglang-latest.sif</code> was SGLang 0.5.13.post1, which hard-asserts EAGLE only for DeepSeekV4 via the <code>apply_deepseek_v4_defaults</code> hook. DSpark/DFLASH are rejected.</p>
+
+  <p><strong>The mistake I made:</strong> When DSpark failed on 0.5.13.post1, I gave up on it and spent 6 boot cycles tuning EAGLE &mdash; none exceeded 119 tok/s. The user said "Why didn't we do DSpark yet?" &mdash; and the fix was simply to pull a newer SGLang container. DSpark worked immediately, hit 256 tok/s. Lesson saved to <code>feedback_dspark_not_eagle.md</code>.</p>
+
+  <h3 style="font-size: 1.0625rem; font-weight: 600; color: #e4e4ef; margin-top: 1.5rem;">Final config</h3>
+  <ul style="font-size: 0.9rem; line-height: 1.7;">
+    <li>Container: <code>sglang-v0516.sif</code> (SGLang 0.5.16-cu130 from <code>lmsysorg/sglang:v0.5.16-cu130</code>)</li>
+    <li>TP=4, <code>flashinfer_mxfp4</code> MoE backend, <code>dsv4</code> attention</li>
+    <li><code>--speculative-algorithm DSPARK --speculative-dspark-block-size 5</code> (gamma=5)</li>
+    <li><code>--enable-deepseek-v4-fp4-indexer</code></li>
+    <li><code>--cuda-graph-max-bs 192</code> (lmsys blog value)</li>
+    <li><code>--mem-fraction-static 0.90</code>, <code>--kv-cache-dtype fp8_e4m3</code></li>
+    <li><code>--chunked-prefill-size 4096</code>, <code>--disable-flashinfer-autotune</code></li>
+    <li>FlashInfer + Triton caches on disk (not tmpfs &mdash; host RAM OOMs during JIT)</li>
+  </ul>
+
+  <h3 style="font-size: 1.0625rem; font-weight: 600; color: #f87171; margin-top: 1.5rem;">Known issues to watch</h3>
+  <ul style="font-size: 0.9rem; line-height: 1.7;">
+    <li><strong>PR #33614 (OPEN)</strong>: DSpark TP rank divergence &mdash; sampling decisions made independently per rank, may deadlock at TP&gt;1 (we're TP=4). Watch for deadlocks at long context.</li>
+    <li><strong>Issue #33549</strong>: decode hang at ~245K context with DSpark + TP=8. TP=4 less affected, but watch past 200K.</li>
+    <li><strong>Issue #33493</strong>: DSpark looks up <code>acc_linear_penalities</code> (typo) instead of <code>acc_additive_penalties</code>. Breaks <code>min_new_tokens</code> and additive penalties.</li>
+  </ul>
+
+  <p style="font-size: 0.85rem; color: #71717a; margin-top: 1.5rem;">
+    Full deployment doc: <code>docs/ops/v4flash-0731-dspark-deployment.md</code> &middot;
+    Serve script: <code>serving/serve-v4flash-container.sh</code> &middot;
+    Container pull: <code>serving/pull-sglang-v0516.sh</code> &middot;
+    Memory: <code>project_v4flash0731_speed_optimization.md</code>
+  </p>
+</div>
+<!-- ==================== END V4-FLASH-0731 DSPARK ==================== -->
+
+<!-- Global Footer -->
+<div class="footer" style="margin-top: 3rem;">
+  Updated 2026-08-05 &middot; oneHPC Equinix MU4 &middot; NVIDIA B200 192 GB &middot; L40S 48 GB<br>
+  <span style="color: #27272a;">Air-gapped agentic coding &middot; GLM-5.2 FP8 (220-250 tok/s) &middot; V4-Flash-0731 + DSpark (256 tok/s on 4× B200) &middot; MiniMax M3 (117 tok/s, vision) &middot; Gemma-4-MMM (59%)</span>
+</div>
+
+</div>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// Framer Motion scroll-triggered animations
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof Motion === 'undefined' && typeof motion === 'undefined') return;
+  const animate = (typeof Motion !== 'undefined' ? Motion : motion).animate;
+  const inView = (typeof Motion !== 'undefined' ? Motion : motion).inView;
+
+  // Animate section blocks on scroll
+  document.querySelectorAll('[data-animate]').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(24px)';
+    inView(el, () => {
+      animate(el, { opacity: 1, transform: 'translateY(0px)' }, { duration: 0.6, easing: [0.25, 0.46, 0.45, 0.94] });
+    }, { margin: '-50px' });
+  });
+
+  // Animate metric cards with stagger
+  document.querySelectorAll('.metric-card').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(16px) scale(0.96)';
+    inView(el, () => {
+      animate(el, { opacity: 1, transform: 'translateY(0) scale(1)' }, { duration: 0.5, delay: i * 0.08, easing: [0.25, 0.46, 0.45, 0.94] });
+    }, { margin: '-30px' });
+  });
+
+  // Animate table rows
+  document.querySelectorAll('tbody tr').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-12px)';
+    inView(el, () => {
+      animate(el, { opacity: 1, transform: 'translateX(0)' }, { duration: 0.4, delay: i * 0.05, easing: 'ease-out' });
+    }, { margin: '-20px' });
+  });
+
+  // Animate badges with spring
+  document.querySelectorAll('.badge').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'scale(0.8)';
+    setTimeout(() => {
+      animate(el, { opacity: 1, transform: 'scale(1)' }, { duration: 0.5, delay: i * 0.1, easing: [0.34, 1.56, 0.64, 1] });
+    }, 300);
+  });
+
+  // Pulse animation on active badge dots
+  document.querySelectorAll('.badge-dot').forEach(dot => {
+    animate(dot, { scale: [1, 1.4, 1] }, { duration: 2, repeat: Infinity, easing: 'ease-in-out' });
+  });
+});
+</script>
+</body>
+</html>

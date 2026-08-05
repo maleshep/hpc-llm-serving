@@ -39,10 +39,12 @@ LLM_DIR=$PROJECT/llm
 MODEL=$LLM_DIR/models/deepseek-v4-flash
 PORT=8100
 NODE=$(hostname)
-# Use sglang-latest.sif (SGLang 0.5.13.post1) — supports DFLASH speculation
-# (the dsv4-blackwell.sif container has SGLang 0.5.10rc0 which only has EAGLE/EAGLE3/NEXTN/NGRAM).
-# DFLASH is SGLang's name for what DeepSeek's model card calls "DSPARK" — same algorithm.
-SIF=$LLM_DIR/containers/sglang-latest.sif
+# Use sglang-v0516.sif (SGLang 0.5.16) — first version with DSPARK support for
+# DeepSeekV4 arch (PR #30261, released July 2026). The previous sglang-latest.sif
+# (0.5.13.post1) only had EAGLE for DeepSeekV4 — DSPARK/DFLASH were rejected by
+# apply_deepseek_v4_defaults hook. DSpark is DeepSeek's native spec algorithm
+# using layers 40-42 of the same checkpoint as drafter (no separate model).
+SIF=$LLM_DIR/containers/sglang-v0516.sif
 
 module load apptainer/1.4.1
 
@@ -71,31 +73,44 @@ cat > $LLM_DIR/.serve-state.json << EOF
     "port": $PORT,
     "model": "deepseek-v4-flash-0731",
     "engine": "sglang-container",
-    "image": "sglang-latest.sif",
+    "image": "sglang-v0516.sif",
+    "sglang_version": "0.5.16",
     "tp_size": 4,
     "active_params": "8B",
     "total_params": "304B",
     "context_length": 1048576,
-    "speculative": "eagle-3token",
+    "speculative": "dspark-gamma5-blocksize5",
     "moe_backend": "flashinfer_mxfp4",
-    "kv_cache_dtype": "fp8",
+    "kv_cache_dtype": "fp8_e4m3",
+    "throughput_tok_s": 256,
     "started_at": "$(date -Iseconds)",
     "status": "loading",
     "tunnel_cmd": "ssh -L $PORT:${NODE}:$PORT -N user@hpc-cluster.example.com"
 }
 EOF
 
-# Run SGLang inside the container — V4-Flash-0731 recipe per model card.
+# Run SGLang inside the container — V4-Flash-0731 DSpark winning recipe.
 # --nv: expose NVIDIA GPUs
 # --bind: mount model weights into container
-# DSpark speculation: layers 40-42 of the SAME checkpoint serve as the drafter.
+# DSpark speculation: layers 40-42 of the SAME checkpoint serve as the drafter
+#   (DeepSeek's native spec algorithm, PR #30261 in SGLang). gamma=5, block_size=5.
 #   NO --speculative-draft-model-path flag (target+draft come from same weights).
 # MXFP4 MoE runtime: flashinfer_mxfp4 quantizes MoE experts to 4-bit at runtime
 #   (dense layers stay FP8 in the checkpoint). ~2x MoE matmul speedup on B200.
-# FP8 KV cache: halves KV VRAM (runtime flag, works on FP8 checkpoint).
-# mem-fraction-static 0.85 — leaves 15% for temp tensors + EAGLE CUDA graphs.
+# FP8_e4m3 KV cache: halves KV VRAM (runtime flag, works on FP8 checkpoint).
+#   NOTE: SGLang 0.5.13.post1 rejected bare 'fp8' — must use 'fp8_e4m3' or 'fp8_e5m2'.
+# mem-fraction-static 0.90 — model card recipe (0.92 works too without EAGLE, but
+#   DSpark CUDA graphs need the headroom).
+# cuda-graph-max-bs 192 — lmsys blog value (DSpark CUDA graphs work at higher bs).
 # FlashInfer/Triton cache dirs bound to project storage (not tmpfs) — tmpfs uses
 # host RAM which OOMs during FlashInfer cubin JIT (thousands of symlink ops).
+#
+# MEASURED: 256 tok/s on 4x B200 (Trial 2: 245, Trial 3: 267, 2026-08-05).
+# Beats GLM-5.2 FP8 8x B200 (~220-250 tok/s) on half the hardware.
+#
+# REQUIRES: sglang-v0516.sif (SGLang 0.5.16+). Older containers (sglang-latest.sif
+# 0.5.13.post1, sglang-dsv4-blackwell.sif 0.5.10rc0) do NOT support DSPARK for
+# DeepSeekV4 arch — apply_deepseek_v4_defaults hook asserts EAGLE only.
 mkdir -p $LLM_DIR/.cache/flashinfer $LLM_DIR/.cache/triton
 apptainer exec --nv --cleanenv --writable-tmpfs \
     --env "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -113,14 +128,16 @@ apptainer exec --nv --cleanenv --writable-tmpfs \
         --tp-size 4 \
         --trust-remote-code \
         --moe-runner-backend flashinfer_mxfp4 \
-        --speculative-algorithm EAGLE \
-        --speculative-num-steps 3 \
-        --speculative-eagle-topk 1 \
-        --speculative-num-draft-tokens 4 \
+        --attention-backend dsv4 \
+        --speculative-algorithm DSPARK \
+        --speculative-dspark-block-size 5 \
+        --enable-deepseek-v4-fp4-indexer \
+        --cuda-graph-max-bs 192 \
         --chunked-prefill-size 4096 \
         --swa-full-tokens-ratio 0.1 \
+        --disable-flashinfer-autotune \
         --context-length 1048576 \
-        --mem-fraction-static 0.85 \
+        --mem-fraction-static 0.90 \
         --kv-cache-dtype fp8_e4m3 \
         --tool-call-parser deepseekv4 \
         --reasoning-parser deepseek-v4 \
@@ -165,14 +182,16 @@ cat > $LLM_DIR/.serve-state.json << EOF3
     "port": $PORT,
     "model": "deepseek-v4-flash-0731",
     "engine": "sglang-container",
-    "image": "sglang-latest.sif",
+    "image": "sglang-v0516.sif",
+    "sglang_version": "0.5.16",
     "tp_size": 4,
     "active_params": "8B",
     "total_params": "304B",
     "context_length": 1048576,
-    "speculative": "eagle-3token",
+    "speculative": "dspark-gamma5-blocksize5",
     "moe_backend": "flashinfer_mxfp4",
-    "kv_cache_dtype": "fp8",
+    "kv_cache_dtype": "fp8_e4m3",
+    "throughput_tok_s": 256,
     "started_at": "$(date -Iseconds)",
     "status": "serving",
     "tunnel_cmd": "ssh -L $PORT:${NODE}:$PORT -N user@hpc-cluster.example.com"
