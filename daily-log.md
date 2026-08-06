@@ -67,3 +67,4 @@
 
 2026-08-05 12:30 UTC: V4-Flash-0731 + DSpark speculation hits 256 tok/s on 4x B200 (3.1x baseline of 83 tok/s with EAGLE). DSpark requires SGLang 0.5.16+ (sglang-v0516.sif container); older 0.5.13.post1 hard-asserts EAGLE only for DeepSeekV4. Winning config: --speculative-algorithm DSPARK --speculative-dspark-block-size 5, flashinfer_mxfp4 MoE runtime, fp8_e4m3 KV cache, cuda-graph-max-bs 192, mem-fraction 0.90, enable-deepseek-v4-fp4-indexer. Beats V4-Pro on every coding benchmark (Terminal-Bench 82.7 vs 72.1, DeepSWE 54.4 vs 12.8, Toolathlon 70.3 vs 55.9). New ops doc: docs/ops/v4flash-0731-dspark-deployment.md. New /meta-harness-loop skill. Removed /hpc-code skill (folded into hpc + docs/ops/client-tooling.md).
 2026-08-05 12:56 UTC: Daily sync.
+2026-08-06 12:58 UTC: Daily sync.
